@@ -10,6 +10,7 @@ import { EntityRow } from "../components/EntityRow";
 import { StatusBadge } from "../components/StatusBadge";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { clientUrl } from "../lib/utils";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -54,7 +55,7 @@ export function Clients() {
         (c) =>
           c.name.toLowerCase().includes(q) ||
           c.email?.toLowerCase().includes(q) ||
-          c.cnpj?.toLowerCase().includes(q),
+          c.contactName?.toLowerCase().includes(q),
       );
     }
     return result;
@@ -127,10 +128,25 @@ export function Clients() {
             <EntityRow
               key={client.id}
               title={client.name}
-              subtitle={[client.email, client.cnpj].filter(Boolean).join(" · ") || undefined}
-              to={`/clients/${client.id}`}
+              subtitle={
+                [
+                  client.contactName ? `Primary contact: ${client.contactName}` : null,
+                  client.email,
+                  client.linkedProjectCount != null ? `${client.linkedProjectCount} linked projects` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || undefined
+              }
+              to={clientUrl(client)}
               trailing={
-                <StatusBadge status={client.status} />
+                <div className="flex items-center gap-3">
+                  {client.activeProjectCount != null ? (
+                    <span className="text-xs text-muted-foreground">
+                      {client.activeProjectCount} active
+                    </span>
+                  ) : null}
+                  <StatusBadge status={client.status} />
+                </div>
               }
             />
           ))}

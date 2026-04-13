@@ -1,14 +1,11 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ClientProject } from "@paperclipai/shared";
-import { CLIENT_PROJECT_TYPES, CLIENT_PROJECT_BILLING_TYPES } from "@paperclipai/shared";
+import { CLIENT_PROJECT_STATUSES } from "@paperclipai/shared";
 import { clientsApi } from "../api/clients";
 import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
-import {
-  Dialog,
-  DialogContent,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,15 +21,19 @@ interface LinkClientProjectDialogProps {
   editingProject?: ClientProject;
 }
 
-export function LinkClientProjectDialog({ open, onOpenChange, clientId, companyId, editingProject }: LinkClientProjectDialogProps) {
+export function LinkClientProjectDialog({
+  open,
+  onOpenChange,
+  clientId,
+  companyId,
+  editingProject,
+}: LinkClientProjectDialogProps) {
   const queryClient = useQueryClient();
   const mode = editingProject ? "edit" : "create";
 
   const [projectId, setProjectId] = useState("");
   const [projectNameOverride, setProjectNameOverride] = useState("");
-  const [projectType, setProjectType] = useState("");
-  const [billingType, setBillingType] = useState("");
-  const [amountCents, setAmountCents] = useState("");
+  const [status, setStatus] = useState("active");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [description, setDescription] = useState("");
@@ -46,13 +47,11 @@ export function LinkClientProjectDialog({ open, onOpenChange, clientId, companyI
   });
 
   const createLink = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      clientsApi.createProject(clientId, data),
+    mutationFn: (data: Record<string, unknown>) => clientsApi.createProject(clientId, data),
   });
 
   const updateLink = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      clientsApi.updateProject(editingProject!.id, data),
+    mutationFn: (data: Record<string, unknown>) => clientsApi.updateProject(editingProject!.id, data),
   });
 
   const activeMutation = mode === "edit" ? updateLink : createLink;
@@ -60,9 +59,7 @@ export function LinkClientProjectDialog({ open, onOpenChange, clientId, companyI
   function reset() {
     setProjectId("");
     setProjectNameOverride("");
-    setProjectType("");
-    setBillingType("");
-    setAmountCents("");
+    setStatus("active");
     setStartDate("");
     setEndDate("");
     setDescription("");
@@ -71,26 +68,19 @@ export function LinkClientProjectDialog({ open, onOpenChange, clientId, companyI
   }
 
   useEffect(() => {
-    if (open && editingProject) {
-      setProjectId(editingProject.projectId);
-      setProjectNameOverride(editingProject.projectNameOverride ?? "");
-      setProjectType(editingProject.projectType ?? "");
-      setBillingType(editingProject.billingType ?? "");
-      setAmountCents(
-        editingProject.amountCents != null ? (editingProject.amountCents / 100).toString() : "",
-      );
-      setStartDate(
-        editingProject.startDate ? new Date(editingProject.startDate).toISOString().slice(0, 10) : "",
-      );
-      setEndDate(
-        editingProject.endDate ? new Date(editingProject.endDate).toISOString().slice(0, 10) : "",
-      );
-      setDescription(editingProject.description ?? "");
-      setTags(editingProject.tags ?? []);
-      setTagsInput("");
-    } else if (open && !editingProject) {
+    if (!open) return;
+    if (!editingProject) {
       reset();
+      return;
     }
+    setProjectId(editingProject.projectId);
+    setProjectNameOverride(editingProject.projectNameOverride ?? "");
+    setStatus(editingProject.status);
+    setStartDate(editingProject.startDate ? new Date(editingProject.startDate).toISOString().slice(0, 10) : "");
+    setEndDate(editingProject.endDate ? new Date(editingProject.endDate).toISOString().slice(0, 10) : "");
+    setDescription(editingProject.description ?? "");
+    setTags(editingProject.tags ?? []);
+    setTagsInput("");
   }, [open, editingProject]);
 
   function addTag() {
@@ -113,48 +103,53 @@ export function LinkClientProjectDialog({ open, onOpenChange, clientId, companyI
     try {
       const data: Record<string, unknown> = {};
       if (mode === "create") data.projectId = projectId;
-      if (projectNameOverride.trim()) data.projectNameOverride = projectNameOverride.trim();
-      else data.projectNameOverride = null;
-      if (projectType) data.projectType = projectType;
-      else data.projectType = null;
-      if (billingType) data.billingType = billingType;
-      else data.billingType = null;
-      if (amountCents) data.amountCents = Math.round(parseFloat(amountCents) * 100);
-      else data.amountCents = null;
-      if (startDate) data.startDate = startDate;
-      else data.startDate = null;
-      if (endDate) data.endDate = endDate;
-      else data.endDate = null;
-      if (description.trim()) data.description = description.trim();
-      else data.description = null;
+      data.status = status;
+      data.projectNameOverride = projectNameOverride.trim() || null;
+      data.startDate = startDate || null;
+      data.endDate = endDate || null;
+      data.description = description.trim() || null;
       data.tags = tags;
 
       await activeMutation.mutateAsync(data);
       queryClient.invalidateQueries({ queryKey: queryKeys.clients.projects(clientId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.list(companyId) });
       reset();
       onOpenChange(false);
     } catch {
-      // error surfaced via activeMutation.isError
+      // surfaced via mutation state
     }
   }
 
-  const activeProjects = (projects ?? []).filter((p) => !p.archivedAt);
+  const activeProjects = (projects ?? []).filter((project) => !project.archivedAt);
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) reset();
+        onOpenChange(nextOpen);
+      }}
+    >
       <DialogContent showCloseButton={false} className="p-0 gap-0 sm:max-w-lg">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
           <span className="text-sm text-muted-foreground">
-            {mode === "edit" ? "Edit Project Link" : "Link Project"}
+            {mode === "edit" ? "Edit Linked Project" : "Link Project"}
           </span>
-          <Button variant="ghost" size="icon-xs" className="text-muted-foreground" onClick={() => { reset(); onOpenChange(false); }}>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-muted-foreground"
+            onClick={() => {
+              reset();
+              onOpenChange(false);
+            }}
+          >
             <span className="text-lg leading-none">&times;</span>
           </Button>
         </div>
 
-        <div className="px-4 py-3 space-y-3">
-          {/* Project selector */}
+        <div className="space-y-3 px-4 py-3">
           <div className="space-y-2">
             <Label>Project *</Label>
             <Select value={projectId} onValueChange={setProjectId} disabled={mode === "edit"}>
@@ -162,101 +157,69 @@ export function LinkClientProjectDialog({ open, onOpenChange, clientId, companyI
                 <SelectValue placeholder="Select a project..." />
               </SelectTrigger>
               <SelectContent>
-                {activeProjects.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                {activeProjects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Display Name Override</Label>
+              <Label>Display name override</Label>
               <Input
-                placeholder="Custom project name"
+                placeholder="Optional client-facing label"
                 value={projectNameOverride}
                 onChange={(e) => setProjectNameOverride(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label>Project Type</Label>
-              <Select value={projectType} onValueChange={setProjectType}>
+              <Label>Relationship status</Label>
+              <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="None" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CLIENT_PROJECT_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  {CLIENT_PROJECT_STATUSES.map((statusOption) => (
+                    <SelectItem key={statusOption} value={statusOption}>
+                      {statusOption}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Billing Type</Label>
-              <Select value={billingType} onValueChange={setBillingType}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CLIENT_PROJECT_BILLING_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{t === "monthly" ? "Monthly" : "One-time"}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Start date</Label>
+              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Amount (R$)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={amountCents}
-                onChange={(e) => setAmountCents(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Start Date</Label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>End Date</Label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
+              <Label>End date</Label>
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label>Description</Label>
+            <Label>Notes</Label>
             <Textarea
-              placeholder="Project summary..."
+              placeholder="How this project relates to the client, expectations, scope notes, or context..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
 
-          {/* Tags */}
           <div className="space-y-2">
-            <Label>Tags (tech stack)</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                className="flex-1"
-                placeholder="Type and press Enter..."
-                value={tagsInput}
-                onChange={(e) => setTagsInput(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-                onBlur={addTag}
-              />
-            </div>
-            {tags.length > 0 && (
-              <div className="flex gap-1 flex-wrap mt-1.5">
+            <Label>Tags</Label>
+            <Input
+              placeholder="Type and press Enter..."
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              onKeyDown={handleTagKeyDown}
+              onBlur={addTag}
+            />
+            {tags.length > 0 ? (
+              <div className="mt-1.5 flex flex-wrap gap-1">
                 {tags.map((tag) => (
                   <span
                     key={tag}
@@ -265,19 +228,18 @@ export function LinkClientProjectDialog({ open, onOpenChange, clientId, companyI
                     {tag}
                     <button
                       className="text-muted-foreground hover:text-foreground"
-                      onClick={() => setTags(tags.filter((t) => t !== tag))}
+                      onClick={() => setTags(tags.filter((currentTag) => currentTag !== tag))}
                     >
                       <X className="h-2.5 w-2.5" />
                     </button>
                   </span>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-border">
+        <div className="flex items-center justify-between border-t border-border px-4 py-2.5">
           {activeMutation.isError ? (
             <p className="text-xs text-destructive">
               {mode === "edit" ? "Failed to update project link." : "Failed to link project."}
@@ -285,14 +247,14 @@ export function LinkClientProjectDialog({ open, onOpenChange, clientId, companyI
           ) : (
             <span />
           )}
-          <Button
-            size="sm"
-            disabled={!projectId || activeMutation.isPending}
-            onClick={handleSubmit}
-          >
+          <Button size="sm" disabled={!projectId || activeMutation.isPending} onClick={handleSubmit}>
             {activeMutation.isPending
-              ? (mode === "edit" ? "Saving..." : "Linking...")
-              : (mode === "edit" ? "Save Changes" : "Link project")}
+              ? mode === "edit"
+                ? "Saving..."
+                : "Linking..."
+              : mode === "edit"
+                ? "Save Changes"
+                : "Link Project"}
           </Button>
         </div>
       </DialogContent>

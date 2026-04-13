@@ -20,7 +20,6 @@ export function CreateClientDialog() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [cnpj, setCnpj] = useState("");
   const [phone, setPhone] = useState("");
   const [contactName, setContactName] = useState("");
   const [notes, setNotes] = useState("");
@@ -33,7 +32,6 @@ export function CreateClientDialog() {
   function reset() {
     setName("");
     setEmail("");
-    setCnpj("");
     setPhone("");
     setContactName("");
     setNotes("");
@@ -45,7 +43,6 @@ export function CreateClientDialog() {
       await createClient.mutateAsync({
         name: name.trim(),
         email: email.trim() || undefined,
-        cnpj: cnpj.trim() || undefined,
         phone: phone.trim() || undefined,
         contactName: contactName.trim() || undefined,
         notes: notes.trim() || undefined,
@@ -121,14 +118,6 @@ export function CreateClientDialog() {
               />
             </div>
             <div className="space-y-2">
-              <Label>CNPJ</Label>
-              <Input
-                placeholder="XX.XXX.XXX/XXXX-XX"
-                value={cnpj}
-                onChange={(e) => setCnpj(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
               <Label>Phone</Label>
               <Input
                 value={phone}
@@ -146,7 +135,7 @@ export function CreateClientDialog() {
           <div className="space-y-2">
             <Label>Notes</Label>
             <Textarea
-              placeholder="Additional notes about this client..."
+              placeholder="Relationship notes, context, or operator reminders..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />

@@ -48,6 +48,12 @@ const ACTIVITY_ROW_VERBS: Record<string, string> = {
   "project.created": "created",
   "project.updated": "updated",
   "project.deleted": "deleted",
+  "client.created": "created",
+  "client.updated": "updated",
+  "client.deleted": "deleted",
+  "client_project.created": "linked project to",
+  "client_project.updated": "updated relationship on",
+  "client_project.deleted": "removed linked project from",
   "goal.created": "created",
   "goal.updated": "updated",
   "goal.deleted": "deleted",
@@ -82,6 +88,12 @@ const ISSUE_ACTIVITY_LABELS: Record<string, string> = {
   "approval.created": "requested approval",
   "approval.approved": "approved",
   "approval.rejected": "rejected",
+  "client.created": "created the client",
+  "client.updated": "updated the client",
+  "client.deleted": "deleted the client",
+  "client_project.created": "linked a project",
+  "client_project.updated": "updated a linked project",
+  "client_project.deleted": "removed a linked project",
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {

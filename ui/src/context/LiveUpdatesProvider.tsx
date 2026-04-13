@@ -533,6 +533,26 @@ function invalidateActivityQueries(
     return;
   }
 
+  if (entityType === "client") {
+    queryClient.invalidateQueries({ queryKey: queryKeys.clients.list(companyId) });
+    if (entityId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(entityId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.projects(entityId) });
+    }
+    return;
+  }
+
+  if (entityType === "client_project") {
+    queryClient.invalidateQueries({ queryKey: queryKeys.clients.list(companyId) });
+    const details = readRecord(payload.details);
+    const clientId = readString(details?.clientId);
+    if (clientId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.projects(clientId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId) });
+    }
+    return;
+  }
+
   if (entityType === "goal") {
     queryClient.invalidateQueries({ queryKey: queryKeys.goals.list(companyId) });
     if (entityId) queryClient.invalidateQueries({ queryKey: queryKeys.goals.detail(entityId) });

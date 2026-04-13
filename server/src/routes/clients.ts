@@ -59,7 +59,7 @@ export function clientRoutes(db: Db) {
     const existing = await svc.getById(id);
     if (!existing) throw notFound("Client not found");
     assertCompanyAccess(req, existing.companyId);
-    const updated = await svc.update(id, req.body);
+    const updated = await svc.update(id, existing.companyId, req.body);
     const actor = getActorInfo(req);
     await logActivity(db, {
       companyId: existing.companyId,
@@ -79,7 +79,7 @@ export function clientRoutes(db: Db) {
     const existing = await svc.getById(id);
     if (!existing) throw notFound("Client not found");
     assertCompanyAccess(req, existing.companyId);
-    await svc.remove(id);
+    await svc.remove(id, existing.companyId);
     const actor = getActorInfo(req);
     await logActivity(db, {
       companyId: existing.companyId,
@@ -101,7 +101,7 @@ export function clientRoutes(db: Db) {
     const client = await svc.getById(id);
     if (!client) throw notFound("Client not found");
     assertCompanyAccess(req, client.companyId);
-    const result = await svc.listProjects(id);
+    const result = await svc.listProjects(id, client.companyId);
     res.json(result);
   });
 
@@ -133,7 +133,7 @@ export function clientRoutes(db: Db) {
     const existing = await svc.getProjectById(id);
     if (!existing) throw notFound("Client project not found");
     assertCompanyAccess(req, existing.companyId);
-    const updated = await svc.updateProject(id, req.body);
+    const updated = await svc.updateProject(id, existing.companyId, req.body);
     const actor = getActorInfo(req);
     await logActivity(db, {
       companyId: existing.companyId,
@@ -153,7 +153,7 @@ export function clientRoutes(db: Db) {
     const existing = await svc.getProjectById(id);
     if (!existing) throw notFound("Client project not found");
     assertCompanyAccess(req, existing.companyId);
-    await svc.removeProject(id);
+    await svc.removeProject(id, existing.companyId);
     const actor = getActorInfo(req);
     await logActivity(db, {
       companyId: existing.companyId,

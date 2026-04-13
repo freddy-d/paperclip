@@ -2899,11 +2899,11 @@ export function heartbeatService(db: Db) {
             clientPhone: clients.phone,
             clientContactName: clients.contactName,
             clientNotes: clients.notes,
-            clientCnpj: clients.cnpj,
-            projectType: clientProjects.projectType,
+            clientMetadata: clients.metadata,
             projectDescription: clientProjects.description,
             tags: clientProjects.tags,
             projectNameOverride: clientProjects.projectNameOverride,
+            projectMetadata: clientProjects.metadata,
           })
           .from(clientProjects)
           .innerJoin(clients, eq(clientProjects.clientId, clients.id))
@@ -2918,14 +2918,28 @@ export function heartbeatService(db: Db) {
           .then((rows) => rows[0] ?? null);
 
         if (clientLink) {
+          const clientCnpj =
+            clientLink.clientMetadata &&
+            typeof clientLink.clientMetadata === "object" &&
+            typeof (clientLink.clientMetadata as Record<string, unknown>).cnpj === "string"
+              ? ((clientLink.clientMetadata as Record<string, unknown>).cnpj as string)
+              : null;
+          const legacyProjectType =
+            clientLink.projectMetadata &&
+            typeof clientLink.projectMetadata === "object" &&
+            typeof (clientLink.projectMetadata as Record<string, unknown>).legacyProjectType === "string"
+              ? ((clientLink.projectMetadata as Record<string, unknown>).legacyProjectType as string)
+              : null;
           const parts: string[] = ["## Client Context"];
           parts.push(`- **Client:** ${clientLink.clientName}`);
           if (clientLink.clientEmail) parts.push(`- **Email:** ${clientLink.clientEmail}`);
+          if (clientLink.clientPhone) parts.push(`- **Phone:** ${clientLink.clientPhone}`);
           if (clientLink.clientContactName) parts.push(`- **Contact:** ${clientLink.clientContactName}`);
-          if (clientLink.clientCnpj) parts.push(`- **CNPJ:** ${clientLink.clientCnpj}`);
-          if (clientLink.projectType) parts.push(`- **Project Type:** ${clientLink.projectType}`);
+          if (clientCnpj) parts.push(`- **CNPJ:** ${clientCnpj}`);
+          if (legacyProjectType) parts.push(`- **Relationship Type:** ${legacyProjectType}`);
           if (clientLink.projectNameOverride) parts.push(`- **Project Name:** ${clientLink.projectNameOverride}`);
           if (clientLink.projectDescription) parts.push(`- **Description:** ${clientLink.projectDescription}`);
+          if (clientLink.clientNotes) parts.push(`- **Relationship Notes:** ${clientLink.clientNotes}`);
           if (clientLink.tags && clientLink.tags.length > 0) parts.push(`- **Tech Stack:** ${clientLink.tags.join(", ")}`);
           (runtimeConfig as Record<string, unknown>).clientContextMarkdown = parts.join("\n");
         }

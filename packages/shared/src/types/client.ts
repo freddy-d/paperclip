@@ -1,15 +1,30 @@
-import type { ClientStatus, ClientProjectStatus, ClientProjectType, ClientProjectBillingType } from "../constants.js";
+import type { ClientStatus, ClientProjectStatus } from "../constants.js";
+
+export interface ClientMetadata {
+  cnpj?: string;
+  [key: string]: unknown;
+}
+
+export interface ClientProjectMetadata {
+  legacyProjectType?: string;
+  legacyBillingType?: string;
+  legacyAmountCents?: number;
+  legacyLastPaymentAt?: string;
+  [key: string]: unknown;
+}
 
 export interface Client {
   id: string;
   companyId: string;
   name: string;
   email: string | null;
-  cnpj: string | null;
   phone: string | null;
   contactName: string | null;
   notes: string | null;
   status: ClientStatus;
+  metadata: ClientMetadata | null;
+  linkedProjectCount?: number;
+  activeProjectCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -20,15 +35,12 @@ export interface ClientProject {
   clientId: string;
   projectId: string;
   projectNameOverride: string | null;
-  projectType: ClientProjectType | null;
   status: ClientProjectStatus;
   description: string | null;
-  billingType: ClientProjectBillingType | null;
-  amountCents: number | null;
-  lastPaymentAt: string | null;
   startDate: string | null;
   endDate: string | null;
   tags: string[];
+  metadata: ClientProjectMetadata | null;
   createdAt: string;
   updatedAt: string;
   /** Joined from projects table when available */
