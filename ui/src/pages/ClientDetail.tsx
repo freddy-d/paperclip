@@ -8,17 +8,17 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { projectUrl } from "../lib/utils";
-import { StatusBadge } from "../components/StatusBadge";
+import { statusBadge, statusBadgeDefault } from "../lib/status-colors";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { LinkClientProjectDialog } from "../components/LinkClientProjectDialog";
 import { InstructionsBundleEditor } from "../components/InstructionsBundleEditor";
+import { InlineEditor } from "../components/InlineEditor";
+import { DraftInput } from "../components/agent-config-primitives";
+import { StatusBadge } from "../components/StatusBadge";
 import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,48 @@ function PropertyRow({
   );
 }
 
+function ClientStatusPicker({
+  status,
+  onChange,
+}: {
+  status: string;
+  onChange: (status: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const colorClass = statusBadge[status] ?? statusBadgeDefault;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer hover:opacity-80 transition-opacity",
+            colorClass,
+          )}
+        >
+          {status.replace("_", " ")}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-36 p-1" align="start">
+        {CLIENT_STATUSES.map((s) => (
+          <Button
+            key={s}
+            variant="ghost"
+            size="sm"
+            className={cn("w-full justify-start gap-2 text-xs", s === status && "bg-accent")}
+            onClick={() => {
+              onChange(s);
+              setOpen(false);
+            }}
+          >
+            {s}
+          </Button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function ClientDetail() {
   const { clientId } = useParams<{ clientId: string }>();
   const { selectedCompanyId } = useCompany();
@@ -55,10 +97,8 @@ export function ClientDetail() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<ClientDetailTab>("overview");
-  const [editing, setEditing] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ClientProject | null>(null);
-  const [editForm, setEditForm] = useState<Record<string, string | null>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [selectedInstructionsFile, setSelectedInstructionsFile] = useState("CLIENT.md");
 
@@ -107,7 +147,6 @@ export function ClientDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.clients.list(selectedCompanyId!) });
-      setEditing(false);
     },
   });
 
@@ -151,48 +190,22 @@ export function ClientDetail() {
   }
   const currentClient = client;
 
-  function startEditing() {
-    setEditForm({
-      name: currentClient.name,
-      email: currentClient.email ?? "",
-      phone: currentClient.phone ?? "",
-      contactName: currentClient.contactName ?? "",
-      cnpj: currentClient.metadata?.cnpj ?? "",
-      notes: currentClient.notes ?? "",
-      status: currentClient.status,
-    });
-    setEditing(true);
-  }
-
-  function handleSave() {
-    const patch: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(editForm)) {
-      if (key === "cnpj") continue; // handled separately via metadata
-      patch[key] = value === "" ? null : value;
-    }
-    if (editForm.name) patch.name = editForm.name.trim();
-    const cnpjValue = editForm.cnpj?.trim() || null;
-    patch.metadata = { ...(currentClient.metadata ?? {}), cnpj: cnpjValue ?? undefined };
-    updateClient.mutate(patch);
-  }
+  const commit = (data: Record<string, unknown>) => updateClient.mutate(data);
+  const commitMeta = (patch: Record<string, unknown>) =>
+    commit({ metadata: { ...(currentClient.metadata ?? {}), ...patch } });
 
   return (
     <div className="space-y-6 max-w-4xl">
 
       {/* Page header */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <h2 className="text-xl font-bold">{currentClient.name}</h2>
-          <p className="text-sm text-muted-foreground">Client relationship record</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {!editing && (
-            <Button size="sm" variant="ghost" onClick={startEditing}>
-              <Pencil className="h-3.5 w-3.5 mr-1" />
-              Edit
-            </Button>
-          )}
-        </div>
+      <div className="min-w-0">
+        <InlineEditor
+          value={currentClient.name}
+          onSave={(name) => commit({ name: name.trim() })}
+          as="h2"
+          className="text-xl font-bold"
+        />
+        <p className="text-sm text-muted-foreground mt-1">Client relationship record</p>
       </div>
 
       {/* Tabs */}
@@ -210,118 +223,57 @@ export function ClientDetail() {
 
         {/* Overview tab */}
         <TabsContent value="overview" className="space-y-0 mt-4">
-          {editing ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Name *</Label>
-                  <Input
-                    value={editForm.name ?? ""}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={editForm.status ?? "active"}
-                    onValueChange={(value) => setEditForm({ ...editForm, status: value })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CLIENT_STATUSES.map((status) => (
-                        <SelectItem key={status} value={status}>
-                          {status}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Primary contact</Label>
-                  <Input
-                    value={editForm.contactName ?? ""}
-                    onChange={(e) => setEditForm({ ...editForm, contactName: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input
-                    value={editForm.email ?? ""}
-                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <Input
-                    value={editForm.phone ?? ""}
-                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>CNPJ</Label>
-                  <Input
-                    value={editForm.cnpj ?? ""}
-                    onChange={(e) => setEditForm({ ...editForm, cnpj: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Notes</Label>
-                <Textarea
-                  value={editForm.notes ?? ""}
-                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                  placeholder="Relationship context, communication preferences, or operator reminders..."
-                />
-              </div>
-              <div className="flex items-center justify-end gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={!editForm.name?.trim() || updateClient.isPending}
-                >
-                  {updateClient.isPending ? "Saving..." : "Save"}
-                </Button>
-              </div>
-              {updateClient.isError ? (
-                <p className="text-xs text-destructive">Failed to update client.</p>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-1 pb-4">
-              <PropertyRow label="Name">{currentClient.name}</PropertyRow>
-              <PropertyRow label="Status">
-                <StatusBadge status={currentClient.status} />
-              </PropertyRow>
-              <PropertyRow label="Contact">
-                {currentClient.contactName ?? (
-                  <span className="text-muted-foreground">Not set</span>
-                )}
-              </PropertyRow>
-              <PropertyRow label="Email">
-                {currentClient.email ?? (
-                  <span className="text-muted-foreground">Not set</span>
-                )}
-              </PropertyRow>
-              <PropertyRow label="Phone">
-                {currentClient.phone ?? (
-                  <span className="text-muted-foreground">Not set</span>
-                )}
-              </PropertyRow>
-              {currentClient.metadata?.cnpj && (
-                <PropertyRow label="CNPJ">{currentClient.metadata.cnpj}</PropertyRow>
-              )}
-              <PropertyRow label="Notes" alignStart>
-                <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                  {currentClient.notes?.trim() || "No notes added yet."}
-                </p>
-              </PropertyRow>
-            </div>
-          )}
+          <div className="space-y-1 pb-4">
+            <PropertyRow label="Status">
+              <ClientStatusPicker
+                status={currentClient.status}
+                onChange={(status) => commit({ status })}
+              />
+            </PropertyRow>
+            <PropertyRow label="Contact">
+              <DraftInput
+                value={currentClient.contactName ?? ""}
+                onCommit={(contactName) => commit({ contactName: contactName.trim() || null })}
+                className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm outline-none"
+                placeholder="Primary contact name"
+              />
+            </PropertyRow>
+            <PropertyRow label="Email">
+              <DraftInput
+                value={currentClient.email ?? ""}
+                onCommit={(email) => commit({ email: email.trim() || null })}
+                className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm outline-none"
+                placeholder="contact@example.com"
+              />
+            </PropertyRow>
+            <PropertyRow label="Phone">
+              <DraftInput
+                value={currentClient.phone ?? ""}
+                onCommit={(phone) => commit({ phone: phone.trim() || null })}
+                className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm outline-none"
+                placeholder="+1 (555) 000-0000"
+              />
+            </PropertyRow>
+            <PropertyRow label="CNPJ">
+              <DraftInput
+                value={currentClient.metadata?.cnpj ?? ""}
+                onCommit={(cnpj) => commitMeta({ cnpj: cnpj.trim() || undefined })}
+                className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm outline-none"
+                placeholder="00.000.000/0000-00"
+              />
+            </PropertyRow>
+            <PropertyRow label="Notes" alignStart>
+              <InlineEditor
+                value={currentClient.notes ?? ""}
+                onSave={(notes) => commit({ notes: notes.trim() || null })}
+                nullable
+                as="p"
+                className="text-sm text-muted-foreground"
+                placeholder="Add relationship notes..."
+                multiline
+              />
+            </PropertyRow>
+          </div>
         </TabsContent>
 
         {/* Projects tab */}
