@@ -22,6 +22,7 @@ const mockGoalService = vi.hoisted(() => ({
 }));
 
 const mockWorkspaceOperationService = vi.hoisted(() => ({}));
+const mockProjectFilesService = vi.hoisted(() => ({}));
 const mockSecretService = vi.hoisted(() => ({
   normalizeEnvBindingsForPersistence: vi.fn(),
 }));
@@ -48,6 +49,7 @@ vi.mock("../telemetry.js", () => ({
 vi.mock("../services/index.js", () => ({
   goalService: () => mockGoalService,
   logActivity: mockLogActivity,
+  projectFilesService: () => mockProjectFilesService,
   projectService: () => mockProjectService,
   secretService: () => mockSecretService,
   workspaceOperationService: () => mockWorkspaceOperationService,

@@ -67,6 +67,16 @@ export type {
   ProjectCodebaseOrigin,
   ProjectGoalRef,
   ProjectWorkspace,
+  ProjectFilePreviewType,
+  ProjectFileType,
+  ProjectFilesAheadBehind,
+  ProjectFilesDirtyState,
+  ProjectFilesBranch,
+  ProjectFilesTreeEntry,
+  ProjectFilesTreeResponse,
+  ProjectFileDetail,
+  ProjectFilesSummary,
+  ProjectFilesSyncResult,
 } from "./project.js";
 export type {
   ExecutionWorkspace,

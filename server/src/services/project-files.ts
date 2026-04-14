@@ -1,0 +1,530 @@
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+import type { Db } from "@paperclipai/db";
+import type {
+  ProjectFileDetail,
+  ProjectFilesAheadBehind,
+  ProjectFilesBranch,
+  ProjectFilesDirtyState,
+  ProjectFilesSummary,
+  ProjectFilesSyncResult,
+  ProjectFilesTreeEntry,
+  ProjectFilesTreeResponse,
+} from "@paperclipai/shared";
+import { badRequest, conflict, notFound, unprocessable } from "../errors.js";
+import { projectService } from "./projects.js";
+
+const execFileAsync = promisify(execFile);
+const DEFAULT_HIDDEN_DIRS = new Set(["node_modules", "dist", "build", ".next", "coverage", "vendor", ".git"]);
+type ServiceProject = NonNullable<Awaited<ReturnType<ReturnType<typeof projectService>["getById"]>>>;
+
+function normalizeRelativePath(input: string): string {
+  const normalized = path.posix.normalize((input || "").replaceAll("\\", "/")).replace(/^\/+/, "");
+  if (normalized === "." || normalized === "") return "";
+  if (normalized === ".." || normalized.startsWith("../")) {
+    throw unprocessable("File path must stay within the project root");
+  }
+  return normalized;
+}
+
+function resolvePathWithinRoot(rootPath: string, relativePath: string): string {
+  const normalized = normalizeRelativePath(relativePath);
+  const absoluteRoot = path.resolve(rootPath);
+  const absolutePath = path.resolve(absoluteRoot, normalized);
+  const relativeToRoot = path.relative(absoluteRoot, absolutePath);
+  if (relativeToRoot === ".." || relativeToRoot.startsWith(`..${path.sep}`)) {
+    throw unprocessable("File path must stay within the project root");
+  }
+  return absolutePath;
+}
+
+function inferMimeType(filePath: string): string | null {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".svg")) return "image/svg+xml";
+  if (lower.endsWith(".bmp")) return "image/bmp";
+  if (lower.endsWith(".md")) return "text/markdown";
+  if (lower.endsWith(".json")) return "application/json";
+  if (lower.endsWith(".ts")) return "text/typescript";
+  if (lower.endsWith(".tsx")) return "text/typescript";
+  if (lower.endsWith(".js")) return "text/javascript";
+  if (lower.endsWith(".jsx")) return "text/javascript";
+  if (lower.endsWith(".css")) return "text/css";
+  if (lower.endsWith(".html")) return "text/html";
+  if (lower.endsWith(".txt")) return "text/plain";
+  return null;
+}
+
+function inferLanguage(filePath: string): string | null {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".md")) return "markdown";
+  if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".ts") || lower.endsWith(".tsx")) return "typescript";
+  if (lower.endsWith(".js") || lower.endsWith(".jsx")) return "javascript";
+  if (lower.endsWith(".css")) return "css";
+  if (lower.endsWith(".html")) return "html";
+  if (lower.endsWith(".yml") || lower.endsWith(".yaml")) return "yaml";
+  if (lower.endsWith(".sh")) return "bash";
+  if (lower.endsWith(".py")) return "python";
+  return "text";
+}
+
+function isImagePath(filePath: string): boolean {
+  const mime = inferMimeType(filePath);
+  return typeof mime === "string" && mime.startsWith("image/");
+}
+
+function classifyTreeFileType(filePath: string): ProjectFilesTreeEntry["fileType"] {
+  if (isImagePath(filePath)) return "image";
+  const lower = filePath.toLowerCase();
+  if (/\.(md|txt|json|ts|tsx|js|jsx|css|html|yml|yaml|sh|py|mjs|cjs|toml|xml|env|gitignore|npmrc)$/i.test(lower)) {
+    return "text";
+  }
+  return "binary";
+}
+
+async function runGit(args: string[], cwd: string) {
+  return await execFileAsync("git", ["-C", cwd, ...args], { cwd });
+}
+
+function sanitizeGitError(error: unknown, fallback: string): string {
+  if (error && typeof error === "object") {
+    const stderr = "stderr" in error ? String((error as { stderr?: unknown }).stderr ?? "").trim() : "";
+    const stdout = "stdout" in error ? String((error as { stdout?: unknown }).stdout ?? "").trim() : "";
+    if (stderr) return stderr;
+    if (stdout) return stdout;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+async function existsDir(targetPath: string | null): Promise<boolean> {
+  if (!targetPath) return false;
+  const stat = await fs.stat(targetPath).catch(() => null);
+  return Boolean(stat?.isDirectory());
+}
+
+async function resolveProjectRoot(project: ServiceProject): Promise<string | null> {
+  const candidatePaths = [
+    project.primaryWorkspace?.cwd ?? null,
+    project.codebase.effectiveLocalFolder ?? null,
+    project.codebase.localFolder ?? null,
+  ];
+  for (const candidate of candidatePaths) {
+    if (await existsDir(candidate)) return candidate;
+  }
+  return null;
+}
+
+async function inspectDirtyState(repoRoot: string): Promise<ProjectFilesDirtyState> {
+  const output = (await runGit(["status", "--porcelain=v1", "--untracked-files=all"], repoRoot)).stdout;
+  let dirtyEntryCount = 0;
+  let untrackedEntryCount = 0;
+  for (const line of output.split(/\r?\n/)) {
+    if (!line) continue;
+    if (line.startsWith("??")) {
+      untrackedEntryCount += 1;
+    } else {
+      dirtyEntryCount += 1;
+    }
+  }
+  return {
+    hasDirtyTrackedFiles: dirtyEntryCount > 0,
+    hasUntrackedFiles: untrackedEntryCount > 0,
+    dirtyEntryCount,
+    untrackedEntryCount,
+  };
+}
+
+async function inspectAheadBehind(repoRoot: string): Promise<ProjectFilesAheadBehind | null> {
+  try {
+    const upstream = (await runGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], repoRoot)).stdout.trim();
+    if (!upstream) return null;
+    const counts = (await runGit(["rev-list", "--left-right", "--count", `${upstream}...HEAD`], repoRoot)).stdout.trim();
+    const [behindRaw, aheadRaw] = counts.split(/\s+/);
+    return {
+      ahead: aheadRaw ? Number.parseInt(aheadRaw, 10) : 0,
+      behind: behindRaw ? Number.parseInt(behindRaw, 10) : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function inspectBranches(repoRoot: string): Promise<{ currentBranch: string | null; branches: ProjectFilesBranch[] }> {
+  const branches: ProjectFilesBranch[] = [];
+  let currentBranch: string | null = null;
+  try {
+    const current = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], repoRoot)).stdout.trim();
+    currentBranch = current && current !== "HEAD" ? current : null;
+  } catch {
+    currentBranch = null;
+  }
+
+  try {
+    const localRaw = (await runGit(["for-each-ref", "--format=%(refname:short)|%(upstream:short)", "refs/heads"], repoRoot)).stdout;
+    for (const line of localRaw.split(/\r?\n/)) {
+      if (!line) continue;
+      const [name, tracking] = line.split("|");
+      if (!name) continue;
+      branches.push({
+        name,
+        kind: "local",
+        current: currentBranch === name,
+        tracking: tracking || null,
+      });
+    }
+  } catch {}
+
+  try {
+    const remoteRaw = (await runGit(["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"], repoRoot)).stdout;
+    for (const line of remoteRaw.split(/\r?\n/)) {
+      const name = line.trim();
+      if (!name || name === "origin/HEAD") continue;
+      branches.push({
+        name,
+        kind: "remote",
+        current: false,
+        tracking: null,
+      });
+    }
+  } catch {}
+
+  branches.sort((left, right) => {
+    if (left.current !== right.current) return left.current ? -1 : 1;
+    if (left.kind !== right.kind) return left.kind === "local" ? -1 : 1;
+    return left.name.localeCompare(right.name);
+  });
+
+  return { currentBranch, branches };
+}
+
+async function buildSummary(project: ServiceProject): Promise<ProjectFilesSummary> {
+  const rootPath = await resolveProjectRoot(project);
+  if (!rootPath) {
+    return {
+      available: false,
+      companyId: project.companyId,
+      projectId: project.id,
+      workspaceId: project.primaryWorkspace?.id ?? null,
+      workspaceName: project.primaryWorkspace?.name ?? null,
+      rootPath: null,
+      repoRoot: null,
+      gitEnabled: false,
+      currentBranch: null,
+      branches: [],
+      dirtyWorktree: null,
+      aheadBehind: null,
+    };
+  }
+
+  let repoRoot: string | null = null;
+  try {
+    repoRoot = (await runGit(["rev-parse", "--show-toplevel"], rootPath)).stdout.trim() || null;
+  } catch {
+    repoRoot = null;
+  }
+
+  const gitEnabled = Boolean(repoRoot);
+  const dirtyWorktree = repoRoot ? await inspectDirtyState(repoRoot) : null;
+  const aheadBehind = repoRoot ? await inspectAheadBehind(repoRoot) : null;
+  const branchInfo = repoRoot ? await inspectBranches(repoRoot) : { currentBranch: null, branches: [] };
+
+  return {
+    available: true,
+    companyId: project.companyId,
+    projectId: project.id,
+    workspaceId: project.primaryWorkspace?.id ?? null,
+    workspaceName: project.primaryWorkspace?.name ?? null,
+    rootPath,
+    repoRoot,
+    gitEnabled,
+    currentBranch: branchInfo.currentBranch,
+    branches: branchInfo.branches,
+    dirtyWorktree,
+    aheadBehind,
+  };
+}
+
+async function ensureProject(projectId: string, db: Db): Promise<ServiceProject> {
+  const project = await projectService(db).getById(projectId);
+  if (!project) throw notFound("Project not found");
+  return project;
+}
+
+export function projectFilesService(db: Db) {
+  async function saveFile(projectId: string, relativePath: string, content: string): Promise<ProjectFileDetail> {
+    const project = await ensureProject(projectId, db);
+    const summary = await buildSummary(project);
+    if (!summary.available || !summary.rootPath) {
+      throw badRequest("Project does not have a local workspace to browse");
+    }
+    const normalizedPath = normalizeRelativePath(relativePath);
+    if (!normalizedPath) throw badRequest("File path is required");
+    const absolutePath = resolvePathWithinRoot(summary.rootPath, normalizedPath);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, content, "utf8");
+    return await readFile(projectId, normalizedPath);
+  }
+
+  async function readFile(projectId: string, relativePath: string): Promise<ProjectFileDetail> {
+    const project = await ensureProject(projectId, db);
+    const summary = await buildSummary(project);
+    if (!summary.available || !summary.rootPath) {
+      throw badRequest("Project does not have a local workspace to browse");
+    }
+    const normalizedPath = normalizeRelativePath(relativePath);
+    if (!normalizedPath) throw badRequest("File path is required");
+    const absolutePath = resolvePathWithinRoot(summary.rootPath, normalizedPath);
+    const stat = await fs.stat(absolutePath).catch(() => null);
+    if (!stat?.isFile()) {
+      throw notFound("File not found");
+    }
+
+    if (isImagePath(normalizedPath)) {
+      const raw = await fs.readFile(absolutePath);
+      return {
+        path: normalizedPath,
+        name: path.basename(normalizedPath),
+        fileType: "image",
+        previewType: "image",
+        size: stat.size,
+        language: null,
+        textContent: null,
+        base64Content: raw.toString("base64"),
+        mimeType: inferMimeType(normalizedPath),
+        updatedAt: stat.mtime,
+      };
+    }
+
+    const raw = await fs.readFile(absolutePath);
+    const text = raw.toString("utf8");
+    if (text.includes("\u0000")) {
+      return {
+        path: normalizedPath,
+        name: path.basename(normalizedPath),
+        fileType: "binary",
+        previewType: "binary",
+        size: stat.size,
+        language: null,
+        textContent: null,
+        base64Content: null,
+        mimeType: inferMimeType(normalizedPath),
+        updatedAt: stat.mtime,
+      };
+    }
+
+    let previewType: ProjectFileDetail["previewType"] = "text";
+    let textContent = text;
+    if (normalizedPath.toLowerCase().endsWith(".md")) {
+      previewType = "markdown";
+    } else if (normalizedPath.toLowerCase().endsWith(".json")) {
+      previewType = "json";
+      try {
+        textContent = `${JSON.stringify(JSON.parse(text), null, 2)}\n`;
+      } catch {}
+    }
+
+    return {
+      path: normalizedPath,
+      name: path.basename(normalizedPath),
+      fileType: "text",
+      previewType,
+      size: stat.size,
+      language: inferLanguage(normalizedPath),
+      textContent,
+      base64Content: null,
+      mimeType: inferMimeType(normalizedPath),
+      updatedAt: stat.mtime,
+    };
+  }
+
+  return {
+    async getSummary(projectId: string): Promise<ProjectFilesSummary> {
+      return await buildSummary(await ensureProject(projectId, db));
+    },
+
+    async listTree(projectId: string, relativePath: string, showIgnored: boolean): Promise<ProjectFilesTreeResponse> {
+      const project = await ensureProject(projectId, db);
+      const summary = await buildSummary(project);
+      if (!summary.available || !summary.rootPath) {
+        throw badRequest("Project does not have a local workspace to browse");
+      }
+      const normalizedPath = normalizeRelativePath(relativePath);
+      const absolutePath = resolvePathWithinRoot(summary.rootPath, normalizedPath);
+      const stat = await fs.stat(absolutePath).catch(() => null);
+      if (!stat?.isDirectory()) {
+        throw notFound("Directory not found");
+      }
+
+      const entries = await fs.readdir(absolutePath, { withFileTypes: true });
+      const responseEntries: ProjectFilesTreeEntry[] = [];
+      for (const entry of entries) {
+        if (entry.name === "." || entry.name === "..") continue;
+        const hiddenByDefault = DEFAULT_HIDDEN_DIRS.has(entry.name);
+        if (!showIgnored && hiddenByDefault) continue;
+        if (!entry.isDirectory() && !entry.isFile()) continue;
+        const entryPath = normalizedPath ? `${normalizedPath}/${entry.name}` : entry.name;
+        responseEntries.push({
+          name: entry.name,
+          path: entryPath,
+          kind: entry.isDirectory() ? "dir" : "file",
+          hiddenByDefault,
+          fileType: entry.isDirectory() ? "directory" : classifyTreeFileType(entry.name),
+        });
+      }
+
+      responseEntries.sort((left, right) => {
+        if (left.kind !== right.kind) return left.kind === "dir" ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      });
+
+      return { path: normalizedPath, entries: responseEntries };
+    },
+
+    readFile,
+
+    saveFile,
+
+    async createFile(projectId: string, relativePath: string): Promise<ProjectFileDetail> {
+      return await saveFile(projectId, relativePath, "");
+    },
+
+    async createFolder(projectId: string, relativePath: string): Promise<{ path: string }> {
+      const project = await ensureProject(projectId, db);
+      const summary = await buildSummary(project);
+      if (!summary.available || !summary.rootPath) {
+        throw badRequest("Project does not have a local workspace to browse");
+      }
+      const normalizedPath = normalizeRelativePath(relativePath);
+      if (!normalizedPath) throw badRequest("Folder path is required");
+      const absolutePath = resolvePathWithinRoot(summary.rootPath, normalizedPath);
+      await fs.mkdir(absolutePath, { recursive: true });
+      return { path: normalizedPath };
+    },
+
+    async renamePath(projectId: string, relativePath: string, nextRelativePath: string): Promise<{ path: string }> {
+      const project = await ensureProject(projectId, db);
+      const summary = await buildSummary(project);
+      if (!summary.available || !summary.rootPath) {
+        throw badRequest("Project does not have a local workspace to browse");
+      }
+      const currentPath = resolvePathWithinRoot(summary.rootPath, relativePath);
+      const nextPath = resolvePathWithinRoot(summary.rootPath, nextRelativePath);
+      await fs.mkdir(path.dirname(nextPath), { recursive: true });
+      await fs.rename(currentPath, nextPath);
+      return { path: normalizeRelativePath(nextRelativePath) };
+    },
+
+    async deletePath(projectId: string, relativePath: string): Promise<{ path: string }> {
+      const project = await ensureProject(projectId, db);
+      const summary = await buildSummary(project);
+      if (!summary.available || !summary.rootPath) {
+        throw badRequest("Project does not have a local workspace to browse");
+      }
+      const normalizedPath = normalizeRelativePath(relativePath);
+      if (!normalizedPath) throw badRequest("Path is required");
+      const absolutePath = resolvePathWithinRoot(summary.rootPath, normalizedPath);
+      await fs.rm(absolutePath, { recursive: true, force: true });
+      return { path: normalizedPath };
+    },
+
+    async switchBranch(projectId: string, branch: string, mode: "default" | "autostash" | "discard"): Promise<ProjectFilesSummary> {
+      const project = await ensureProject(projectId, db);
+      const summary = await buildSummary(project);
+      if (!summary.available || !summary.repoRoot) {
+        throw badRequest("Project is not a git checkout");
+      }
+      const trimmedBranch = branch.trim();
+      if (!trimmedBranch) throw badRequest("Branch is required");
+      if (summary.currentBranch === trimmedBranch) return summary;
+
+      if (summary.dirtyWorktree && (summary.dirtyWorktree.hasDirtyTrackedFiles || summary.dirtyWorktree.hasUntrackedFiles) && mode === "default") {
+        throw conflict("Working tree has local changes", { dirtyWorktree: summary.dirtyWorktree });
+      }
+
+      let stashed = false;
+      try {
+        if (mode === "discard") {
+          await runGit(["reset", "--hard", "HEAD"], summary.repoRoot);
+          await runGit(["clean", "-fd"], summary.repoRoot);
+        }
+
+        if (mode === "autostash" && summary.dirtyWorktree && (summary.dirtyWorktree.hasDirtyTrackedFiles || summary.dirtyWorktree.hasUntrackedFiles)) {
+          await runGit(["stash", "push", "--include-untracked", "-m", "paperclip-files-autostash"], summary.repoRoot);
+          stashed = true;
+        }
+
+        if (trimmedBranch.startsWith("origin/")) {
+          const localName = trimmedBranch.slice("origin/".length);
+          await runGit(["switch", "-c", localName, "--track", trimmedBranch], summary.repoRoot);
+        } else {
+          await runGit(["switch", trimmedBranch], summary.repoRoot);
+        }
+
+        if (stashed) {
+          await runGit(["stash", "pop"], summary.repoRoot);
+        }
+      } catch (error) {
+        throw conflict(sanitizeGitError(error, `Failed to switch to ${trimmedBranch}`));
+      }
+
+      return await buildSummary(project);
+    },
+
+    async createBranch(projectId: string, name: string, startPoint?: string | null): Promise<ProjectFilesSummary> {
+      const project = await ensureProject(projectId, db);
+      const summary = await buildSummary(project);
+      if (!summary.available || !summary.repoRoot) {
+        throw badRequest("Project is not a git checkout");
+      }
+      const trimmedName = name.trim();
+      if (!trimmedName) throw badRequest("Branch name is required");
+      const args = ["switch", "-c", trimmedName];
+      if (startPoint && startPoint.trim()) args.push(startPoint.trim());
+      try {
+        await runGit(args, summary.repoRoot);
+      } catch (error) {
+        throw conflict(sanitizeGitError(error, `Failed to create branch ${trimmedName}`));
+      }
+      return await buildSummary(project);
+    },
+
+    async sync(projectId: string): Promise<ProjectFilesSyncResult> {
+      const project = await ensureProject(projectId, db);
+      const summary = await buildSummary(project);
+      if (!summary.available || !summary.repoRoot) {
+        throw badRequest("Project is not a git checkout");
+      }
+
+      let status: ProjectFilesSyncResult["status"] = "success";
+      let message: string | null = null;
+      try {
+        await runGit(["fetch", "origin"], summary.repoRoot);
+        await runGit(["pull", "--rebase", "--autostash"], summary.repoRoot);
+        await runGit(["push"], summary.repoRoot);
+      } catch (error) {
+        const errorMessage = sanitizeGitError(error, "Git sync failed");
+        message = errorMessage;
+        if (/auth|permission denied|could not read from remote repository|authentication/i.test(errorMessage)) {
+          status = "auth_error";
+        } else if (/conflict|resolve all conflicts|rebase/i.test(errorMessage)) {
+          status = "conflict";
+        } else {
+          status = "error";
+        }
+      }
+
+      return {
+        status,
+        summary: await buildSummary(project),
+        message,
+      };
+    },
+  };
+}

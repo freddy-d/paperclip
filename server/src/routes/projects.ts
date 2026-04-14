@@ -2,6 +2,14 @@ import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
 import {
   createProjectSchema,
+  projectFileBranchCreateSchema,
+  projectFileBranchSwitchSchema,
+  projectFileCreateSchema,
+  projectFileDeleteSchema,
+  projectFileReadSchema,
+  projectFileRenameSchema,
+  projectFileSaveSchema,
+  projectFilesPathSchema,
   createProjectWorkspaceSchema,
   isUuidLike,
   updateProjectSchema,
@@ -9,15 +17,16 @@ import {
 } from "@paperclipai/shared";
 import { trackProjectCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
-import { projectService, logActivity, secretService, workspaceOperationService } from "../services/index.js";
-import { conflict } from "../errors.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { projectFilesService, projectService, logActivity, secretService, workspaceOperationService } from "../services/index.js";
+import { conflict, notFound } from "../errors.js";
+import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { startRuntimeServicesForWorkspaceControl, stopRuntimeServicesForProjectWorkspace } from "../services/workspace-runtime.js";
 import { getTelemetryClient } from "../telemetry.js";
 
 export function projectRoutes(db: Db) {
   const router = Router();
   const svc = projectService(db);
+  const filesSvc = projectFilesService(db);
   const secretsSvc = secretService(db);
   const workspaceOperations = workspaceOperationService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
@@ -45,6 +54,9 @@ export function projectRoutes(db: Db) {
     const resolved = await svc.resolveByReference(companyId, rawId);
     if (resolved.ambiguous) {
       throw conflict("Project shortname is ambiguous in this company. Use the project ID.");
+    }
+    if (!resolved.project) {
+      throw notFound("Project not found");
     }
     return resolved.project?.id ?? rawId;
   }
@@ -429,6 +441,237 @@ export function projectRoutes(db: Db) {
     });
 
     res.json(workspace);
+  });
+
+  router.get("/projects/:id/files", async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    res.json(await filesSvc.getSummary(id));
+  });
+
+  router.get("/projects/:id/files/tree", async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    const query = projectFilesPathSchema.parse(req.query);
+    res.json(await filesSvc.listTree(id, query.path, query.showIgnored));
+  });
+
+  router.get("/projects/:id/files/content", async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    const query = projectFileReadSchema.parse(req.query);
+    res.json(await filesSvc.readFile(id, query.path));
+  });
+
+  router.put("/projects/:id/files/content", validate(projectFileSaveSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    const result = await filesSvc.saveFile(id, req.body.path, req.body.content);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "project.file_saved",
+      entityType: "project",
+      entityId: id,
+      details: { path: req.body.path },
+    });
+    res.json(result);
+  });
+
+  router.post("/projects/:id/files/tree/file", validate(projectFileCreateSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    const result = await filesSvc.createFile(id, req.body.path);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "project.file_created",
+      entityType: "project",
+      entityId: id,
+      details: { path: req.body.path },
+    });
+    res.status(201).json(result);
+  });
+
+  router.post("/projects/:id/files/tree/folder", validate(projectFileCreateSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    const result = await filesSvc.createFolder(id, req.body.path);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "project.folder_created",
+      entityType: "project",
+      entityId: id,
+      details: { path: req.body.path },
+    });
+    res.status(201).json(result);
+  });
+
+  router.patch("/projects/:id/files/tree", validate(projectFileRenameSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    const result = await filesSvc.renamePath(id, req.body.path, req.body.nextPath);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "project.path_renamed",
+      entityType: "project",
+      entityId: id,
+      details: { path: req.body.path, nextPath: req.body.nextPath },
+    });
+    res.json(result);
+  });
+
+  router.delete("/projects/:id/files/tree", async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    const query = projectFileDeleteSchema.parse(req.query);
+    const result = await filesSvc.deletePath(id, query.path);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "project.path_deleted",
+      entityType: "project",
+      entityId: id,
+      details: { path: query.path },
+    });
+    res.json(result);
+  });
+
+  router.post("/projects/:id/files/branch", validate(projectFileBranchSwitchSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    const result = await filesSvc.switchBranch(id, req.body.branch, req.body.mode);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "project.branch_switched",
+      entityType: "project",
+      entityId: id,
+      details: { branch: req.body.branch, mode: req.body.mode },
+    });
+    res.json(result);
+  });
+
+  router.post("/projects/:id/files/branch/create", validate(projectFileBranchCreateSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    const result = await filesSvc.createBranch(id, req.body.name, req.body.startPoint);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "project.branch_created",
+      entityType: "project",
+      entityId: id,
+      details: { name: req.body.name, startPoint: req.body.startPoint ?? null },
+    });
+    res.status(201).json(result);
+  });
+
+  router.post("/projects/:id/files/sync", async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, project.companyId);
+    const result = await filesSvc.sync(id);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "project.git_synced",
+      entityType: "project",
+      entityId: id,
+      details: { status: result.status, branch: result.summary.currentBranch },
+    });
+    res.json(result);
   });
 
   router.delete("/projects/:id", async (req, res) => {

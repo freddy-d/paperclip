@@ -25,6 +25,7 @@ import { IssuesList } from "../components/IssuesList";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { ProjectClientList } from "../components/ProjectClientList";
+import { ProjectFilesTab } from "../components/ProjectFilesTab";
 import { buildProjectWorkspaceSummaries } from "../lib/project-workspaces-tab";
 import { projectRouteRef, projectWorkspaceUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
@@ -37,7 +38,7 @@ import { IssuesQuicklook } from "../components/IssuesQuicklook";
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "overview" | "list" | "workspaces" | "configuration" | "budget";
+type ProjectBaseTab = "overview" | "list" | "files" | "workspaces" | "configuration" | "budget";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
@@ -51,6 +52,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   if (projectsIdx === -1 || segments[projectsIdx + 1] !== projectId) return null;
   const tab = segments[projectsIdx + 2];
   if (tab === "overview") return "overview";
+  if (tab === "files") return "files";
   if (tab === "configuration") return "configuration";
   if (tab === "budget") return "budget";
   if (tab === "issues") return "list";
@@ -629,6 +631,10 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/overview`, { replace: true });
       return;
     }
+    if (activeTab === "files") {
+      navigate(`/projects/${canonicalProjectRef}/files`, { replace: true });
+      return;
+    }
     if (activeTab === "configuration") {
       navigate(`/projects/${canonicalProjectRef}/configuration`, { replace: true });
       return;
@@ -764,6 +770,9 @@ export function ProjectDetail() {
     if (cachedTab === "overview") {
       return <Navigate to={`/projects/${canonicalProjectRef}/overview`} replace />;
     }
+    if (cachedTab === "files") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/files`} replace />;
+    }
     if (cachedTab === "configuration") {
       return <Navigate to={`/projects/${canonicalProjectRef}/configuration`} replace />;
     }
@@ -797,6 +806,8 @@ export function ProjectDetail() {
     }
     if (tab === "overview") {
       navigate(`/projects/${canonicalProjectRef}/overview`);
+    } else if (tab === "files") {
+      navigate(`/projects/${canonicalProjectRef}/files`);
     } else if (tab === "workspaces") {
       navigate(`/projects/${canonicalProjectRef}/workspaces`);
     } else if (tab === "budget") {
@@ -869,6 +880,7 @@ export function ProjectDetail() {
           items={[
             { value: "list", label: "Issues" },
             { value: "overview", label: "Overview" },
+            { value: "files", label: "Files" },
             ...(showWorkspacesTab ? [{ value: "workspaces", label: "Workspaces" }] : []),
             { value: "configuration", label: "Configuration" },
             { value: "budget", label: "Budget" },
@@ -897,6 +909,10 @@ export function ProjectDetail() {
       {activeTab === "list" && project?.id && resolvedCompanyId && (
         <ProjectIssuesList projectId={project.id} companyId={resolvedCompanyId} />
       )}
+
+      {activeTab === "files" && project?.id && resolvedCompanyId ? (
+        <ProjectFilesTab projectId={project.id} companyId={resolvedCompanyId} />
+      ) : null}
 
       {activeTab === "workspaces" ? (
         workspaceTabDecisionLoaded ? (

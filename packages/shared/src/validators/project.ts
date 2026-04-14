@@ -120,3 +120,56 @@ export const updateProjectSchema = z.object(projectFields).partial();
 export type UpdateProject = z.infer<typeof updateProjectSchema>;
 
 export type ProjectExecutionWorkspacePolicy = z.infer<typeof projectExecutionWorkspacePolicySchema>;
+
+export const projectFilesPathSchema = z.object({
+  path: z.string().optional().default(""),
+  showIgnored: z.coerce.boolean().optional().default(false),
+});
+
+export type ProjectFilesPathInput = z.infer<typeof projectFilesPathSchema>;
+
+export const projectFileReadSchema = z.object({
+  path: z.string().min(1),
+});
+
+export type ProjectFileReadInput = z.infer<typeof projectFileReadSchema>;
+
+export const projectFileSaveSchema = z.object({
+  path: z.string().min(1),
+  content: z.string(),
+});
+
+export type ProjectFileSaveInput = z.infer<typeof projectFileSaveSchema>;
+
+export const projectFileCreateSchema = z.object({
+  path: z.string().min(1),
+});
+
+export type ProjectFileCreateInput = z.infer<typeof projectFileCreateSchema>;
+
+export const projectFileRenameSchema = z.object({
+  path: z.string().min(1),
+  nextPath: z.string().min(1),
+});
+
+export type ProjectFileRenameInput = z.infer<typeof projectFileRenameSchema>;
+
+export const projectFileDeleteSchema = z.object({
+  path: z.string().min(1),
+});
+
+export type ProjectFileDeleteInput = z.infer<typeof projectFileDeleteSchema>;
+
+export const projectFileBranchSwitchSchema = z.object({
+  branch: z.string().min(1),
+  mode: z.enum(["default", "autostash", "discard"]).optional().default("default"),
+});
+
+export type ProjectFileBranchSwitchInput = z.infer<typeof projectFileBranchSwitchSchema>;
+
+export const projectFileBranchCreateSchema = z.object({
+  name: z.string().min(1),
+  startPoint: z.string().optional().nullable(),
+});
+
+export type ProjectFileBranchCreateInput = z.infer<typeof projectFileBranchCreateSchema>;

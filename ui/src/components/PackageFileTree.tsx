@@ -174,7 +174,10 @@ export function PackageFileTree({
   onToggleDir,
   onSelectFile,
   onToggleCheck,
+  renderDirExtra,
   renderFileExtra,
+  wrapDirRow,
+  wrapFileRow,
   fileRowClassName,
   showCheckboxes = true,
   depth = 0,
@@ -186,8 +189,14 @@ export function PackageFileTree({
   onToggleDir: (path: string) => void;
   onSelectFile: (path: string) => void;
   onToggleCheck?: (path: string, kind: "file" | "dir") => void;
+  /** Optional extra content rendered at the end of each directory row */
+  renderDirExtra?: (node: FileTreeNode) => ReactNode;
   /** Optional extra content rendered at the end of each file row (e.g. action badge) */
   renderFileExtra?: (node: FileTreeNode, checked: boolean) => ReactNode;
+  /** Optional wrapper for a full directory row, e.g. context menu */
+  wrapDirRow?: (node: FileTreeNode, row: ReactNode) => ReactNode;
+  /** Optional wrapper for a full file row, e.g. context menu */
+  wrapFileRow?: (node: FileTreeNode, checked: boolean, row: ReactNode) => ReactNode;
   /** Optional additional className for file rows */
   fileRowClassName?: (node: FileTreeNode, checked: boolean) => string | undefined;
   showCheckboxes?: boolean;
@@ -203,56 +212,64 @@ export function PackageFileTree({
           const childFiles = collectAllPaths(node.children, "file");
           const allChecked = [...childFiles].every((p) => effectiveCheckedFiles.has(p));
           const someChecked = [...childFiles].some((p) => effectiveCheckedFiles.has(p));
+          const dirRow = (
+            <div
+              className={cn(
+                showCheckboxes
+                  ? renderDirExtra
+                    ? "group grid w-full grid-cols-[auto_minmax(0,1fr)_2.25rem_auto] items-center gap-x-1 pr-3 text-left text-sm text-muted-foreground hover:bg-accent/30 hover:text-foreground"
+                    : "group grid w-full grid-cols-[auto_minmax(0,1fr)_2.25rem] items-center gap-x-1 pr-3 text-left text-sm text-muted-foreground hover:bg-accent/30 hover:text-foreground"
+                  : renderDirExtra
+                    ? "group grid w-full grid-cols-[minmax(0,1fr)_2.25rem_auto] items-center gap-x-1 pr-3 text-left text-sm text-muted-foreground hover:bg-accent/30 hover:text-foreground"
+                    : "group grid w-full grid-cols-[minmax(0,1fr)_2.25rem] items-center gap-x-1 pr-3 text-left text-sm text-muted-foreground hover:bg-accent/30 hover:text-foreground",
+                TREE_ROW_HEIGHT_CLASS,
+              )}
+              style={{
+                paddingInlineStart: `${TREE_BASE_INDENT + depth * TREE_STEP_INDENT - 8}px`,
+              }}
+            >
+              {showCheckboxes && (
+                <label className="flex items-center pl-2">
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked; }}
+                    onChange={() => onToggleCheck?.(node.path, "dir")}
+                    className="mr-2 accent-foreground"
+                  />
+                </label>
+              )}
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-2 py-1 text-left"
+                onClick={() => onToggleDir(node.path)}
+              >
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                  {expanded ? (
+                    <FolderOpen className="h-3.5 w-3.5" />
+                  ) : (
+                    <Folder className="h-3.5 w-3.5" />
+                  )}
+                </span>
+                <span className="truncate">{node.name}</span>
+              </button>
+              <button
+                type="button"
+                className="flex h-9 w-9 items-center justify-center self-center rounded-sm text-muted-foreground opacity-70 transition-[background-color,color,opacity] hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                onClick={() => onToggleDir(node.path)}
+              >
+                {expanded ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+              </button>
+              {renderDirExtra?.(node)}
+            </div>
+          );
           return (
             <div key={node.path}>
-              <div
-                className={cn(
-                  showCheckboxes
-                    ? "group grid w-full grid-cols-[auto_minmax(0,1fr)_2.25rem] items-center gap-x-1 pr-3 text-left text-sm text-muted-foreground hover:bg-accent/30 hover:text-foreground"
-                    : "group grid w-full grid-cols-[minmax(0,1fr)_2.25rem] items-center gap-x-1 pr-3 text-left text-sm text-muted-foreground hover:bg-accent/30 hover:text-foreground",
-                  TREE_ROW_HEIGHT_CLASS,
-                )}
-                style={{
-                  paddingInlineStart: `${TREE_BASE_INDENT + depth * TREE_STEP_INDENT - 8}px`,
-                }}
-              >
-                {showCheckboxes && (
-                  <label className="flex items-center pl-2">
-                    <input
-                      type="checkbox"
-                      checked={allChecked}
-                      ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked; }}
-                      onChange={() => onToggleCheck?.(node.path, "dir")}
-                      className="mr-2 accent-foreground"
-                    />
-                  </label>
-                )}
-                <button
-                  type="button"
-                  className="flex min-w-0 items-center gap-2 py-1 text-left"
-                  onClick={() => onToggleDir(node.path)}
-                >
-                  <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                    {expanded ? (
-                      <FolderOpen className="h-3.5 w-3.5" />
-                    ) : (
-                      <Folder className="h-3.5 w-3.5" />
-                    )}
-                  </span>
-                  <span className="truncate">{node.name}</span>
-                </button>
-                <button
-                  type="button"
-                  className="flex h-9 w-9 items-center justify-center self-center rounded-sm text-muted-foreground opacity-70 transition-[background-color,color,opacity] hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                  onClick={() => onToggleDir(node.path)}
-                >
-                  {expanded ? (
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  ) : (
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  )}
-                </button>
-              </div>
+              {wrapDirRow ? wrapDirRow(node, dirRow) : dirRow}
               {expanded && (
                 <PackageFileTree
                   nodes={node.children}
@@ -262,7 +279,10 @@ export function PackageFileTree({
                   onToggleDir={onToggleDir}
                   onSelectFile={onSelectFile}
                   onToggleCheck={onToggleCheck}
+                  renderDirExtra={renderDirExtra}
                   renderFileExtra={renderFileExtra}
+                  wrapDirRow={wrapDirRow}
+                  wrapFileRow={wrapFileRow}
                   fileRowClassName={fileRowClassName}
                   showCheckboxes={showCheckboxes}
                   depth={depth + 1}
@@ -275,9 +295,8 @@ export function PackageFileTree({
         const FileIcon = fileIcon(node.name);
         const checked = effectiveCheckedFiles.has(node.path);
         const extraClassName = fileRowClassName?.(node, checked);
-        return (
+        const fileRow = (
           <div
-            key={node.path}
             className={cn(
               "flex w-full items-center gap-1 pr-3 text-left text-sm text-muted-foreground hover:bg-accent/30 hover:text-foreground cursor-pointer",
               TREE_ROW_HEIGHT_CLASS,
@@ -310,6 +329,11 @@ export function PackageFileTree({
               <span className="truncate">{node.name}</span>
             </button>
             {renderFileExtra?.(node, checked)}
+          </div>
+        );
+        return (
+          <div key={node.path}>
+            {wrapFileRow ? wrapFileRow(node, checked, fileRow) : fileRow}
           </div>
         );
       })}
