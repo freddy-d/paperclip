@@ -236,7 +236,7 @@ async function inspectBranches(repoRoot: string): Promise<{ currentBranch: strin
     const remoteRaw = (await runGit(["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"], repoRoot)).stdout;
     for (const line of remoteRaw.split(/\r?\n/)) {
       const name = line.trim();
-      if (!name || name === "origin/HEAD") continue;
+      if (!name || name === "origin/HEAD" || name === "origin") continue;
       branches.push({
         name,
         kind: "remote",
@@ -654,6 +654,16 @@ export function projectFilesService(db: Db) {
 
       // Step 4: process each local branch
       for (const local of localBranches) {
+        // A branch named after the remote (e.g. "origin") collides with remote refs — skip it
+        if (local.name === "origin") {
+          details.push({
+            branchName: local.name,
+            action: "error",
+            errorMessage: "Branch name 'origin' conflicts with the remote name — rename it: git branch -m origin <new-name>",
+          });
+          continue;
+        }
+
         if (local.trackStatus.includes("[gone]")) {
           // Remote was deleted — try to auto-delete the local branch
           if (local.name === summary.currentBranch) {
