@@ -68,6 +68,128 @@ export interface ProjectClientRef {
   linkedAt: Date;
 }
 
+export type ProjectFilePreviewType = "text" | "markdown" | "json" | "image" | "binary";
+
+export type ProjectFileType = "text" | "directory" | "image" | "binary";
+
+export interface ProjectFilesAheadBehind {
+  ahead: number | null;
+  behind: number | null;
+}
+
+export interface ProjectFilesDirtyState {
+  hasDirtyTrackedFiles: boolean;
+  hasUntrackedFiles: boolean;
+  dirtyEntryCount: number;
+  untrackedEntryCount: number;
+}
+
+export interface ProjectFilesBranch {
+  name: string;
+  kind: "local" | "remote";
+  current: boolean;
+  tracking: string | null;
+}
+
+export interface ProjectFilesTreeEntry {
+  name: string;
+  path: string;
+  kind: "file" | "dir";
+  hiddenByDefault: boolean;
+  fileType: ProjectFileType;
+}
+
+export interface ProjectFilesTreeResponse {
+  path: string;
+  entries: ProjectFilesTreeEntry[];
+}
+
+export interface ProjectFileDetail {
+  path: string;
+  name: string;
+  fileType: ProjectFileType;
+  previewType: ProjectFilePreviewType;
+  size: number;
+  language: string | null;
+  textContent: string | null;
+  base64Content: string | null;
+  mimeType: string | null;
+  updatedAt: Date;
+}
+
+export interface ProjectFilesSummary {
+  available: boolean;
+  companyId: string;
+  projectId: string;
+  workspaceId: string | null;
+  workspaceName: string | null;
+  rootPath: string | null;
+  repoRoot: string | null;
+  gitEnabled: boolean;
+  hasRemote: boolean;
+  currentBranch: string | null;
+  branches: ProjectFilesBranch[];
+  dirtyWorktree: ProjectFilesDirtyState | null;
+  aheadBehind: ProjectFilesAheadBehind | null;
+}
+
+export interface ProjectFilesSyncResult {
+  status: "success" | "conflict" | "auth_error" | "error";
+  summary: ProjectFilesSummary;
+  message: string | null;
+}
+
+export type ProjectFilesBranchSyncAction =
+  | "pushed_to_remote"
+  | "created_local_tracking"
+  | "remote_deleted_local_remains"
+  | "local_auto_deleted"
+  | "already_in_sync"
+  | "error";
+
+export interface ProjectFilesBranchSyncDetail {
+  branchName: string;
+  action: ProjectFilesBranchSyncAction;
+  errorMessage: string | null;
+}
+
+export interface ProjectFilesBranchSyncResult {
+  status: "success" | "partial" | "auth_error" | "error";
+  details: ProjectFilesBranchSyncDetail[];
+  summary: ProjectFilesSummary;
+  message: string | null;
+}
+
+export interface GitStatusEntry {
+  path: string;
+  oldPath: string | null;
+  indexStatus: string;
+  workingStatus: string;
+  isStaged: boolean;
+  isUnstaged: boolean;
+  isUntracked: boolean;
+}
+
+export interface GitStatusResponse {
+  entries: GitStatusEntry[];
+}
+
+export interface GitDiffResponse {
+  diff: string;
+  path: string;
+}
+
+export interface GitCommitResult {
+  status: "success" | "error" | "nothing_to_commit";
+  message: string | null;
+  sha: string | null;
+}
+
+export interface GitPushResult {
+  status: "success" | "error" | "auth_error";
+  message: string | null;
+}
+
 export interface Project {
   id: string;
   companyId: string;
