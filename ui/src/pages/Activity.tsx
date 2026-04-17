@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { activityApi } from "../api/activity";
+import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { clientsApi } from "../api/clients";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { goalsApi } from "../api/goals";
+import { buildCompanyUserProfileMap } from "../lib/company-members";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -67,6 +69,17 @@ export function Activity() {
     enabled: !!selectedCompanyId,
   });
   const clients = clientResponse?.data ?? [];
+
+  const { data: companyMembers } = useQuery({
+    queryKey: queryKeys.access.companyUserDirectory(selectedCompanyId!),
+    queryFn: () => accessApi.listUserDirectory(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const userProfileMap = useMemo(
+    () => buildCompanyUserProfileMap(companyMembers?.users),
+    [companyMembers?.users],
+  );
 
   const agentMap = useMemo(() => {
     const map = new Map<string, Agent>();
@@ -138,6 +151,7 @@ export function Activity() {
               key={event.id}
               event={event}
               agentMap={agentMap}
+              userProfileMap={userProfileMap}
               entityNameMap={entityNameMap}
               entityTitleMap={entityTitleMap}
             />

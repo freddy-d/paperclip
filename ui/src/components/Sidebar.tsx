@@ -30,6 +30,7 @@ import { useSidebar } from "../context/SidebarContext";
 import { cn } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import { SidebarCompanyMenu } from "./SidebarCompanyMenu";
 
 export function Sidebar() {
   const { openNewIssue } = useDialog();
@@ -55,19 +56,9 @@ export function Sidebar() {
 
   return (
     <aside className={cn("h-full min-h-0 border-r border-border bg-background flex flex-col", isCollapsed && !isMobile ? "w-16" : "w-60")}>
-      {/* Top bar: Company name (bold) + Search — aligned with top sections (no visible border) */}
+      {/* Top bar: Company menu + Search + Collapse toggle */}
       <div className={cn("flex items-center gap-1 px-2 h-12 shrink-0", isCollapsed && "justify-center")}>
-        {!isCollapsed && selectedCompany?.brandColor && (
-          <div
-            className="w-4 h-4 rounded-sm shrink-0 ml-1"
-            style={{ backgroundColor: selectedCompany.brandColor }}
-          />
-        )}
-        {!isCollapsed && (
-          <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">
-            {selectedCompany?.name ?? "Select company"}
-          </span>
-        )}
+        {!isCollapsed && <SidebarCompanyMenu />}
         <Button
           variant="ghost"
           size="icon-sm"

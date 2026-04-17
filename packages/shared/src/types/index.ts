@@ -88,6 +88,7 @@ export type {
 } from "./project.js";
 export type {
   ExecutionWorkspace,
+  ExecutionWorkspaceSummary,
   ExecutionWorkspaceConfig,
   ExecutionWorkspaceCloseAction,
   ExecutionWorkspaceCloseActionKind,
@@ -96,7 +97,11 @@ export type {
   ExecutionWorkspaceCloseReadiness,
   ExecutionWorkspaceCloseReadinessState,
   ProjectWorkspaceRuntimeConfig,
+  WorkspaceCommandDefinition,
+  WorkspaceCommandKind,
+  WorkspaceRuntimeControlTarget,
   WorkspaceRuntimeService,
+  WorkspaceRuntimeServiceStateMap,
   WorkspaceRuntimeDesiredState,
   ExecutionWorkspaceStrategyType,
   ExecutionWorkspaceMode,
@@ -201,13 +206,24 @@ export type { LiveEvent } from "./live.js";
 export type { DashboardSummary } from "./dashboard.js";
 export type { ActivityEvent } from "./activity.js";
 export type { SidebarBadges } from "./sidebar-badges.js";
+export type { SidebarOrderPreference } from "./sidebar-preferences.js";
 export type { InboxDismissal } from "./inbox-dismissal.js";
 export type {
+  AccessUserProfile,
+  CompanyMemberRecord,
+  CompanyMembersResponse,
   CompanyMembership,
+  CompanyInviteListResponse,
+  CompanyInviteRecord,
   PrincipalPermissionGrant,
   Invite,
   JoinRequest,
+  JoinRequestInviteSummary,
+  JoinRequestRecord,
   InstanceUserRoleGrant,
+  AdminUserDirectoryEntry,
+  UserCompanyAccessEntry,
+  UserCompanyAccessResponse,
 } from "./access.js";
 export type { QuotaWindow, ProviderQuotaResult } from "./quota.js";
 export type {
