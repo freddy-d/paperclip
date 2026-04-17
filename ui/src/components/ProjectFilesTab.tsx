@@ -727,10 +727,6 @@ export function ProjectFilesTab({
               <RefreshCw className={`h-4 w-4 ${syncRepo.isPending ? "animate-spin" : ""}`} />
               Git Sync
             </Button>
-            <Button variant="outline" size="sm" onClick={() => syncBranches.mutate()} disabled={syncBranches.isPending}>
-              <GitMerge className={`h-4 w-4 ${syncBranches.isPending ? "animate-spin" : ""}`} />
-              Branch Sync
-            </Button>
           </>
         ) : (
           <div className="flex flex-1 items-center gap-2">
@@ -1113,62 +1109,118 @@ export function ProjectFilesTab({
       </div>
 
       <Dialog open={branchDialogOpen} onOpenChange={(open) => { setBranchDialogOpen(open); if (!open) setBranchSearch(""); }}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Switch branch</DialogTitle>
-            <DialogDescription>
-              Local and remote branches. Selecting a remote branch creates a local tracking branch automatically.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Command className="rounded-md border flex-1">
-                <CommandInput placeholder="Search branches..." value={branchSearch} onValueChange={setBranchSearch} />
-                <CommandList>
-                  <CommandEmpty>No branches found.</CommandEmpty>
-                  {filteredLocalBranches.length > 0 && (
-                    <CommandGroup heading="Local">
-                      {filteredLocalBranches.map((branch) => (
-                        <CommandItem key={`local:${branch.name}`} onSelect={() => switchBranch.mutate({ branch: branch.name })}>
-                          <GitBranch className="h-4 w-4 shrink-0" />
-                          <span className={`flex-1 ${branch.current ? "font-semibold" : ""}`}>{branch.name}</span>
-                          {branch.tracking ? <span className="text-xs text-muted-foreground truncate max-w-[120px]">→ {branch.tracking}</span> : null}
-                          {branch.current ? <Check className="h-4 w-4 shrink-0 text-muted-foreground" /> : null}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  )}
-                  {filteredRemoteBranches.length > 0 && (
-                    <CommandGroup heading="Remote">
-                      {filteredRemoteBranches.map((branch) => (
-                        <CommandItem key={`remote:${branch.name}`} onSelect={() => switchBranch.mutate({ branch: branch.name })}>
-                          <Cloud className="h-4 w-4 shrink-0" />
-                          <span className="flex-1">{branch.name}</span>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  )}
-                </CommandList>
-              </Command>
-              <Button variant="outline" size="sm" onClick={() => void refetch()} className="self-start mt-1">
-                Refresh
-              </Button>
+        <DialogContent className="sm:max-w-xl p-0 gap-0 overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 border-b border-border">
+            <div>
+              <DialogTitle className="text-base">Branches</DialogTitle>
+              <DialogDescription className="text-xs mt-0.5">
+                Select to switch · remote branches create a local tracking copy
+              </DialogDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <Input
-                value={createBranchName}
-                onChange={(event) => setCreateBranchName(event.target.value)}
-                placeholder="New branch name"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && createBranchName.trim() && !createBranch.isPending) {
-                    createBranch.mutate(createBranchName);
-                  }
-                }}
-              />
-              <Button onClick={() => createBranch.mutate(createBranchName)} disabled={!createBranchName.trim() || createBranch.isPending}>
-                Create branch
-              </Button>
+            <div className="flex items-center gap-1 shrink-0">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void refetch()} disabled={syncBranches.isPending}>
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent sideOffset={4}>Refresh branch list</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {summary?.hasRemote ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 relative"
+                        onClick={() => syncBranches.mutate()}
+                        disabled={syncBranches.isPending}
+                      >
+                        <GitMerge className="h-4 w-4" />
+                        {syncBranches.isPending ? (
+                          <span className="absolute inset-0 flex items-center justify-center rounded-md bg-background/80">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          </span>
+                        ) : null}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent sideOffset={4}>Sync all branches with remote</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null}
             </div>
+          </div>
+
+          {/* Search + branch list */}
+          <Command className="rounded-none border-none">
+            <div className="px-3 pt-3 pb-1">
+              <CommandInput placeholder="Search branches..." value={branchSearch} onValueChange={setBranchSearch} className="h-8" />
+            </div>
+            <CommandList className="max-h-64 px-1 pb-2">
+              <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">No branches found.</CommandEmpty>
+              {filteredLocalBranches.length > 0 && (
+                <CommandGroup heading="Local">
+                  {filteredLocalBranches.map((branch) => (
+                    <CommandItem
+                      key={`local:${branch.name}`}
+                      onSelect={() => switchBranch.mutate({ branch: branch.name })}
+                      className="rounded-md"
+                    >
+                      <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className={`flex-1 truncate text-sm ${branch.current ? "font-semibold" : ""}`}>{branch.name}</span>
+                      {branch.tracking ? (
+                        <span className="text-xs text-muted-foreground/60 truncate max-w-[100px] shrink-0">
+                          {branch.tracking.replace("origin/", "↑ ")}
+                        </span>
+                      ) : null}
+                      {branch.current ? <Check className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {filteredRemoteBranches.length > 0 && (
+                <CommandGroup heading="Remote">
+                  {filteredRemoteBranches.map((branch) => (
+                    <CommandItem
+                      key={`remote:${branch.name}`}
+                      onSelect={() => switchBranch.mutate({ branch: branch.name })}
+                      className="rounded-md"
+                    >
+                      <Cloud className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate text-sm">{branch.name}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+            </CommandList>
+          </Command>
+
+          {/* Create branch footer */}
+          <div className="flex items-center gap-2 px-3 py-3 border-t border-border bg-muted/30">
+            <Input
+              value={createBranchName}
+              onChange={(event) => setCreateBranchName(event.target.value)}
+              placeholder="New branch name"
+              className="h-8 text-sm"
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && createBranchName.trim() && !createBranch.isPending) {
+                  createBranch.mutate(createBranchName);
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              className="h-8 shrink-0"
+              onClick={() => createBranch.mutate(createBranchName)}
+              disabled={!createBranchName.trim() || createBranch.isPending}
+            >
+              {createBranch.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Create
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
