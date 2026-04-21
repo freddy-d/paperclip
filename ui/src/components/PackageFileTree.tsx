@@ -201,6 +201,7 @@ export function PackageFileTree({
   fileRowClassName,
   fileStatusMap,
   showCheckboxes = true,
+  wrapLabels = false,
   depth = 0,
 }: {
   nodes: FileTreeNode[];
@@ -223,6 +224,8 @@ export function PackageFileTree({
   /** Optional map of file path → git status letter (M, A, D, U, R) for badges */
   fileStatusMap?: Record<string, string>;
   showCheckboxes?: boolean;
+  /** Allow long file and directory names to wrap instead of forcing horizontal overflow. */
+  wrapLabels?: boolean;
   depth?: number;
 }) {
   const effectiveCheckedFiles = checkedFiles ?? new Set<string>();
@@ -274,7 +277,9 @@ export function PackageFileTree({
                     <Folder className="h-3.5 w-3.5" />
                   )}
                 </span>
-                <span className="truncate" title={node.name}>{node.name}</span>
+                <span className={cn("min-w-0", wrapLabels ? "break-all leading-4" : "truncate")}>
+                  {node.name}
+                </span>
               </button>
               <button
                 type="button"
@@ -309,6 +314,7 @@ export function PackageFileTree({
                   fileRowClassName={fileRowClassName}
                   fileStatusMap={fileStatusMap}
                   showCheckboxes={showCheckboxes}
+                  wrapLabels={wrapLabels}
                   depth={depth + 1}
                 />
               )}
@@ -350,7 +356,9 @@ export function PackageFileTree({
               <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                 <FileIcon className="h-3.5 w-3.5" />
               </span>
-              <span className="truncate" title={node.name}>{node.name}</span>
+              <span className={cn("min-w-0", wrapLabels ? "break-all leading-4" : "truncate")}>
+                {node.name}
+              </span>
             </button>
             {fileStatusMap?.[node.path] ? (
               <GitStatusBadge status={fileStatusMap[node.path]} />

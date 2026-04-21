@@ -98,6 +98,7 @@ export interface RoutineRun {
   triggeredAt: Date;
   idempotencyKey: string | null;
   triggerPayload: Record<string, unknown> | null;
+  dispatchFingerprint: string | null;
   linkedIssueId: string | null;
   coalescedIntoRunId: string | null;
   failureReason: string | null;
