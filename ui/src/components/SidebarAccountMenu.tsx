@@ -110,7 +110,7 @@ export function SidebarAccountMenu({
 }: SidebarAccountMenuProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const queryClient = useQueryClient();
-  const { isMobile, setSidebarOpen } = useSidebar();
+  const { isCollapsed, isMobile, setSidebarOpen } = useSidebar();
   const { theme, toggleTheme } = useTheme();
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
@@ -141,19 +141,24 @@ export function SidebarAccountMenu({
   }
 
   return (
-    <div className="border-t border-r border-border bg-background px-3 py-2">
+    <div className="border-t border-r border-border bg-background px-2 py-2">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground"
+            className={cn(
+              "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground",
+              isCollapsed && !isMobile && "justify-center px-2",
+            )}
             aria-label="Open account menu"
           >
             <Avatar size="sm">
               {session?.user.image ? <AvatarImage src={session.user.image} alt={displayName} /> : null}
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
-            <span className="min-w-0 flex-1 truncate">{displayName}</span>
+            {(!isCollapsed || isMobile) && (
+              <span className="min-w-0 flex-1 truncate">{displayName}</span>
+            )}
           </button>
         </PopoverTrigger>
         <PopoverContent
