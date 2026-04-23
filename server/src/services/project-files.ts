@@ -544,6 +544,9 @@ export function projectFilesService(db: Db) {
       if (startPoint && startPoint.trim()) args.push(startPoint.trim());
       try {
         await runGit(args, summary.repoRoot);
+        if (await hasRemoteOrigin(summary.repoRoot)) {
+          await runGit(["push", "-u", "origin", trimmedName], summary.repoRoot);
+        }
       } catch (error) {
         throw conflict(sanitizeGitError(error, `Failed to create branch ${trimmedName}`));
       }
