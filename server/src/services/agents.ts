@@ -470,6 +470,30 @@ export function agentService(db: Db) {
       return updated ? normalizeAgentRow(updated) : null;
     },
 
+    pauseAll: async (companyId: string) => {
+      const allAgents = await agents.list(companyId, { includeTerminated: true });
+      let pausedCount = 0;
+      for (const agent of allAgents) {
+        if (agent.status !== "terminated" && agent.status !== "paused") {
+          await agents.pause(agent.id, "manual");
+          pausedCount++;
+        }
+      }
+      return { pausedCount };
+    },
+
+    resumeAll: async (companyId: string) => {
+      const allAgents = await agents.list(companyId, { includeTerminated: true });
+      let resumedCount = 0;
+      for (const agent of allAgents) {
+        if (agent.status === "paused") {
+          await agents.resume(agent.id);
+          resumedCount++;
+        }
+      }
+      return { resumedCount };
+    },
+
     terminate: async (id: string) => {
       const existing = await getById(id);
       if (!existing) return null;

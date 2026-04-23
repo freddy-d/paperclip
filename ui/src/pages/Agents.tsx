@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "@/lib/router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, queryClient } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
 import { useCompany } from "../context/CompanyContext";
@@ -17,7 +17,7 @@ import { relativeTime, cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { PageTabBar } from "../components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Bot, Plus, List, GitBranch, SlidersHorizontal } from "lucide-react";
+import { Bot, Plus, List, GitBranch, SlidersHorizontal, Pause, Play } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 
 import { getAdapterLabel } from "../adapters/adapter-display-registry";
@@ -108,6 +108,28 @@ export function Agents() {
     return map;
   }, [agents]);
 
+  const pauseableCount = useMemo(() => {
+    return (agents ?? []).filter((a) => a.status !== "terminated" && a.status !== "paused").length;
+  }, [agents]);
+
+  const resumableCount = useMemo(() => {
+    return (agents ?? []).filter((a) => a.status === "paused").length;
+  }, [agents]);
+
+  const bulkPause = useMutation({
+    mutationFn: () => agentsApi.bulkPause(selectedCompanyId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
+    },
+  });
+
+  const bulkResume = useMutation({
+    mutationFn: () => agentsApi.bulkResume(selectedCompanyId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
+    },
+  });
+
   useEffect(() => {
     setBreadcrumbs([{ label: "Agents" }]);
   }, [setBreadcrumbs]);
@@ -191,6 +213,34 @@ export function Agents() {
                 <GitBranch className="h-3.5 w-3.5" />
               </button>
             </div>
+          )}
+          {pauseableCount > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (!window.confirm(`Stop all ${pauseableCount} agent${pauseableCount > 1 ? "s" : ""}?`)) return;
+                bulkPause.mutate();
+              }}
+              disabled={bulkPause.isPending}
+            >
+              <Pause className="h-3.5 w-3.5 mr-1.5" />
+              {bulkPause.isPending ? "Stopping..." : "Stop All"}
+            </Button>
+          )}
+          {resumableCount > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (!window.confirm(`Resume all ${resumableCount} agent${resumableCount > 1 ? "s" : ""}?`)) return;
+                bulkResume.mutate();
+              }}
+              disabled={bulkResume.isPending}
+            >
+              <Play className="h-3.5 w-3.5 mr-1.5" />
+              {bulkResume.isPending ? "Resuming..." : "Resume All"}
+            </Button>
           )}
           <Button size="sm" variant="outline" onClick={openNewAgent}>
             <Plus className="h-3.5 w-3.5 mr-1.5" />

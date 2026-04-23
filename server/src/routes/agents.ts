@@ -2144,6 +2144,50 @@ export function agentRoutes(db: Db) {
     res.json(agent);
   });
 
+  router.post("/agents/bulk/pause", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    if (!companyId) {
+      res.status(400).json({ error: "companyId is required" });
+      return;
+    }
+    const result = await svc.pauseAll(companyId);
+
+    await logActivity(db, {
+      companyId,
+      actorType: "user",
+      actorId: req.actor.userId ?? "board",
+      action: "agents.paused_all",
+      entityType: "company",
+      entityId: companyId,
+      details: { count: result.pausedCount },
+    });
+
+    res.json(result);
+  });
+
+  router.post("/agents/bulk/resume", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    if (!companyId) {
+      res.status(400).json({ error: "companyId is required" });
+      return;
+    }
+    const result = await svc.resumeAll(companyId);
+
+    await logActivity(db, {
+      companyId,
+      actorType: "user",
+      actorId: req.actor.userId ?? "board",
+      action: "agents.resumed_all",
+      entityType: "company",
+      entityId: companyId,
+      details: { count: result.resumedCount },
+    });
+
+    res.json(result);
+  });
+
   router.post("/agents/:id/approve", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
