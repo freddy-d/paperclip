@@ -3591,8 +3591,10 @@ export function heartbeatService(db: Db) {
 
     // Fix A (lazy locking): stamp executionRunId now that the run is actually running,
     // not at queue time. Guard is idempotent — safe if called more than once.
-    const claimedIssueId = readNonEmptyString(parseObject(claimed.contextSnapshot).issueId);
-    if (claimedIssueId) {
+    const claimedContextSnapshot = parseObject(claimed.contextSnapshot);
+    const claimedIssueId = readNonEmptyString(claimedContextSnapshot.issueId);
+    const suppressIssueExecutionLock = Boolean(claimedContextSnapshot.suppressIssueExecutionLock);
+    if (claimedIssueId && !suppressIssueExecutionLock) {
       const claimedAgent = await getAgent(claimed.agentId);
       await db
         .update(issues)
@@ -3607,6 +3609,7 @@ export function heartbeatService(db: Db) {
             eq(issues.id, claimedIssueId),
             eq(issues.companyId, claimed.companyId),
             or(isNull(issues.executionRunId), eq(issues.executionRunId, claimed.id)),
+            inArray(issues.status, ["todo", "in_progress"]),
           ),
         );
     }
@@ -6035,6 +6038,7 @@ export function heartbeatService(db: Db) {
 
       if (!issue) return null;
       if (issue.executionRunId && issue.executionRunId !== run.id) return null;
+      const issueWasTerminal = issue.status === "done" || issue.status === "cancelled";
 
       if (issue.executionRunId === run.id) {
         await tx
@@ -6138,6 +6142,10 @@ export function heartbeatService(db: Db) {
           }
         }
 
+        if (issueWasTerminal) {
+          promotedContextSeed.suppressIssueExecutionLock = true;
+        }
+
         const promotedReason = readNonEmptyString(deferred.reason) ?? "issue_execution_promoted";
         const promotedSource =
           (readNonEmptyString(deferred.source) as WakeupOptions["source"]) ?? "automation";
@@ -6193,15 +6201,17 @@ export function heartbeatService(db: Db) {
           })
           .where(eq(agentWakeupRequests.id, deferred.id));
 
-        await tx
-          .update(issues)
-          .set({
-            executionRunId: newRun.id,
-            executionAgentNameKey: normalizeAgentNameKey(deferredAgent.name),
-            executionLockedAt: now,
-            updatedAt: now,
-          })
-          .where(eq(issues.id, issue.id));
+        if (!issueWasTerminal) {
+          await tx
+            .update(issues)
+            .set({
+              executionRunId: newRun.id,
+              executionAgentNameKey: normalizeAgentNameKey(deferredAgent.name),
+              executionLockedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(issues.id, issue.id));
+        }
 
         return {
           kind: "promoted" as const,
@@ -6327,7 +6337,12 @@ export function heartbeatService(db: Db) {
           executionLockedAt: now,
           updatedAt: now,
         })
-        .where(eq(issues.id, issue.id));
+        .where(
+          and(
+            eq(issues.id, issue.id),
+            inArray(issues.status, ["todo", "in_progress"]),
+          ),
+        );
 
       return {
         kind: "queued_recovery" as const,
@@ -6498,6 +6513,7 @@ export function heartbeatService(db: Db) {
             companyId: issues.companyId,
             executionRunId: issues.executionRunId,
             executionAgentNameKey: issues.executionAgentNameKey,
+            status: issues.status,
           })
           .from(issues)
           .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
@@ -6549,7 +6565,8 @@ export function heartbeatService(db: Db) {
             .where(eq(issues.id, issue.id));
         }
 
-        if (!activeExecutionRun) {
+        const issueIsTerminal = issue.status === "done" || issue.status === "cancelled";
+        if (!activeExecutionRun && !issueIsTerminal) {
           const legacyRun = await tx
             .select()
             .from(heartbeatRuns)

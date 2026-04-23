@@ -524,6 +524,55 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     return { companyId, agentId, runId, wakeupRequestId, issueId };
   }
 
+  async function seedDeferredPromotionFixture(input: { issueStatus: "done" | "cancelled" | "in_progress" }) {
+    const seeded = await seedRunFixture({
+      agentStatus: "running",
+      includeIssue: true,
+    });
+    const deferredWakeId = randomUUID();
+    const now = new Date("2026-03-19T00:10:00.000Z");
+
+    await db.insert(agentWakeupRequests).values({
+      id: deferredWakeId,
+      companyId: seeded.companyId,
+      agentId: seeded.agentId,
+      source: "automation",
+      triggerDetail: "system",
+      reason: "issue_assigned",
+      payload: {
+        issueId: seeded.issueId,
+        _paperclipWakeContext: {
+          issueId: seeded.issueId,
+          taskId: seeded.issueId,
+          wakeReason: "issue_assigned",
+          source: "issue.assignment_recovery",
+          wakeCommentIds: [randomUUID()],
+        },
+      },
+      status: "deferred_issue_execution",
+      requestedAt: now,
+      updatedAt: now,
+    });
+
+    if (input.issueStatus !== "in_progress") {
+      await db
+        .update(issues)
+        .set({
+          status: input.issueStatus,
+          completedAt: input.issueStatus === "done" ? now : null,
+          cancelledAt: input.issueStatus === "cancelled" ? now : null,
+          checkoutRunId: null,
+          executionRunId: null,
+          executionAgentNameKey: null,
+          executionLockedAt: null,
+          updatedAt: now,
+        })
+        .where(eq(issues.id, seeded.issueId));
+    }
+
+    return seeded;
+  }
+
   it("keeps a local run active when the recorded pid is still alive", async () => {
     const child = spawnAliveProcess();
     childProcesses.add(child);
@@ -589,6 +638,100 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       .then((rows) => rows[0] ?? null);
     expect(issue?.executionRunId).toBe(retryRun?.id ?? null);
     expect(issue?.checkoutRunId).toBe(runId);
+  });
+
+  it("does not repopulate execution lock metadata when wakeup touches a terminal issue with a legacy run", async () => {
+    const { agentId, issueId } = await seedRunFixture({
+      includeIssue: true,
+      agentStatus: "running",
+    });
+
+    await db
+      .update(issues)
+      .set({
+        status: "done",
+        completedAt: new Date("2026-03-19T00:10:00.000Z"),
+        checkoutRunId: null,
+        executionRunId: null,
+        executionAgentNameKey: null,
+        executionLockedAt: null,
+      })
+      .where(eq(issues.id, issueId));
+
+    const heartbeat = heartbeatService(db);
+    await heartbeat.wakeup(agentId, {
+      source: "automation",
+      triggerDetail: "system",
+      reason: "issue_assigned",
+      payload: {
+        issueId,
+      },
+      contextSnapshot: {
+        issueId,
+        taskId: issueId,
+        wakeReason: "issue_assigned",
+        source: "issue.assignment_recovery",
+      },
+    });
+
+    const terminalIssue = await waitForValue(async () => {
+      const issue = await db.select().from(issues).where(eq(issues.id, issueId)).then((rows) => rows[0] ?? null);
+      return issue?.status === "done" &&
+        issue.executionRunId === null &&
+        issue.executionAgentNameKey === null &&
+        issue.executionLockedAt === null
+        ? issue
+        : null;
+    });
+
+    expect(terminalIssue?.status).toBe("done");
+    expect(terminalIssue?.executionRunId).toBeNull();
+    expect(terminalIssue?.executionAgentNameKey).toBeNull();
+    expect(terminalIssue?.executionLockedAt).toBeNull();
+  });
+
+  it.each(["done", "cancelled"] as const)(
+    "does not re-lock %s issues during deferred promotion",
+    async (issueStatus) => {
+      const { runId, issueId } = await seedDeferredPromotionFixture({ issueStatus });
+      const heartbeat = heartbeatService(db);
+
+      await heartbeat.cancelRun(runId);
+
+      const issue = await waitForValue(async () => {
+        const row = await db
+          .select()
+          .from(issues)
+          .where(eq(issues.id, issueId))
+          .then((rows) => rows[0] ?? null);
+        return row?.status === "todo" && row.executionRunId === null ? row : null;
+      });
+
+      expect(issue?.status).toBe("todo");
+      expect(issue?.executionRunId).toBeNull();
+      expect(issue?.executionAgentNameKey).toBeNull();
+      expect(issue?.executionLockedAt).toBeNull();
+    },
+  );
+
+  it("keeps deferred promotion locked on active in_progress issues", async () => {
+    const { runId, issueId } = await seedDeferredPromotionFixture({ issueStatus: "in_progress" });
+    const heartbeat = heartbeatService(db);
+
+    await heartbeat.cancelRun(runId);
+
+    const issue = await waitForValue(async () => {
+      const row = await db
+        .select()
+        .from(issues)
+        .where(eq(issues.id, issueId))
+        .then((rows) => rows[0] ?? null);
+      return row?.status === "in_progress" && row.executionRunId ? row : null;
+    });
+
+    expect(issue?.status).toBe("in_progress");
+    expect(issue?.executionRunId).toBeTruthy();
+    expect(issue?.executionRunId).not.toBe(runId);
   });
 
   it.skipIf(process.platform === "win32")("reaps orphaned descendant process groups when the parent pid is already gone", async () => {

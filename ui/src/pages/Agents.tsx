@@ -131,13 +131,6 @@ export function Agents() {
     },
   });
 
-  const bulkResume = useMutation({
-    mutationFn: () => agentsApi.bulkResume(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
-    },
-  });
-
   useEffect(() => {
     setBreadcrumbs([{ label: "Agents" }]);
   }, [setBreadcrumbs]);

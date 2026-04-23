@@ -129,7 +129,7 @@ async function initLocalGit(dirPath: string): Promise<void> {
   await fs.mkdir(dirPath, { recursive: true });
   await runGit(["init"], dirPath);
   await runGit(
-    ["-c", "user.email=paperclip@local", "-c", "user.name=Paperclip", "commit", "--allow-empty", "-m", "Initial commit"],
+    ["commit", "--allow-empty", "-m", "Initial commit"],
     dirPath,
   );
 }
@@ -846,7 +846,7 @@ export function projectFilesService(db: Db) {
       if (!trimmedMessage) throw badRequest("Commit message is required");
       try {
         const result = await runGit(
-          ["-c", "user.email=paperclip@local", "-c", "user.name=Paperclip", "commit", "-m", trimmedMessage],
+          ["commit", "-m", trimmedMessage],
           summary.repoRoot,
         );
         const shaMatch = result.stdout.match(/\[(?:[^\]]+)\s+([0-9a-f]{6,40})\]/);
