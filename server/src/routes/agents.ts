@@ -2146,9 +2146,9 @@ export function agentRoutes(db: Db) {
 
   router.post("/agents/bulk/pause", async (req, res) => {
     assertBoard(req);
-    const companyId = req.params.companyId as string;
+    const companyId = req.actor.companyIds?.[0];
     if (!companyId) {
-      res.status(400).json({ error: "companyId is required" });
+      res.status(403).json({ error: "No company access" });
       return;
     }
     const result = await svc.pauseAll(companyId);
@@ -2168,9 +2168,9 @@ export function agentRoutes(db: Db) {
 
   router.post("/agents/bulk/resume", async (req, res) => {
     assertBoard(req);
-    const companyId = req.params.companyId as string;
+    const companyId = req.actor.companyIds?.[0];
     if (!companyId) {
-      res.status(400).json({ error: "companyId is required" });
+      res.status(403).json({ error: "No company access" });
       return;
     }
     const result = await svc.resumeAll(companyId);
