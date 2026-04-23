@@ -115,19 +115,21 @@ export function Agents() {
 
   const resumableCount = useMemo(() => {
     return (agents ?? []).filter((a) => a.status === "paused").length;
-}, [agents]);
+  }, [agents]);
 
   const bulkPause = useMutation({
-    mutationFn: () => agentsApi.bulkPause(),
+    mutationFn: () => agentsApi.bulkPause(selectedCompanyId!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.org(selectedCompanyId!) });
     },
   });
 
   const bulkResume = useMutation({
-    mutationFn: () => agentsApi.bulkResume(),
+    mutationFn: () => agentsApi.bulkResume(selectedCompanyId!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.org(selectedCompanyId!) });
     },
   });
 
@@ -161,7 +163,7 @@ export function Agents() {
             onValueChange={(v) => navigate(`/agents/${v}`)}
           />
         </Tabs>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {/* Filters */}
           <div className="relative">
             <button
@@ -215,34 +217,32 @@ export function Agents() {
               </button>
             </div>
           )}
-          {pauseableCount > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                if (!window.confirm(`Stop all ${pauseableCount} agent${pauseableCount > 1 ? "s" : ""}?`)) return;
-                bulkPause.mutate();
-              }}
-              disabled={bulkPause.isPending}
-            >
-              <Pause className="h-3.5 w-3.5 mr-1.5" />
-              {bulkPause.isPending ? "Stopping..." : "Stop All"}
-            </Button>
-          )}
-          {resumableCount > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                if (!window.confirm(`Resume all ${resumableCount} agent${resumableCount > 1 ? "s" : ""}?`)) return;
-                bulkResume.mutate();
-              }}
-              disabled={bulkResume.isPending}
-            >
-              <Play className="h-3.5 w-3.5 mr-1.5" />
-              {bulkResume.isPending ? "Resuming..." : "Resume All"}
-            </Button>
-          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              if (pauseableCount === 0) return;
+              if (!window.confirm(`Stop all ${pauseableCount} agent${pauseableCount > 1 ? "s" : ""}?`)) return;
+              bulkPause.mutate();
+            }}
+            disabled={bulkPause.isPending || pauseableCount === 0}
+          >
+            <Pause className="h-3.5 w-3.5 mr-1.5" />
+            {bulkPause.isPending ? "Stopping..." : "Pause All"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              if (resumableCount === 0) return;
+              if (!window.confirm(`Resume all ${resumableCount} agent${resumableCount > 1 ? "s" : ""}?`)) return;
+              bulkResume.mutate();
+            }}
+            disabled={bulkResume.isPending || resumableCount === 0}
+          >
+            <Play className="h-3.5 w-3.5 mr-1.5" />
+            {bulkResume.isPending ? "Resuming..." : "Resume All"}
+          </Button>
           <Button size="sm" variant="outline" onClick={openNewAgent}>
             <Plus className="h-3.5 w-3.5 mr-1.5" />
             New Agent

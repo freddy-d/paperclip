@@ -391,16 +391,18 @@ export function agentService(db: Db) {
     return normalizedUpdated;
   }
 
+  async function listAgents(companyId: string, options?: { includeTerminated?: boolean }) {
+    const conditions = [eq(agents.companyId, companyId)];
+    if (!options?.includeTerminated) {
+      conditions.push(ne(agents.status, "terminated"));
+    }
+    const rows = await db.select().from(agents).where(and(...conditions));
+    const hydrated = await hydrateAgentSpend(rows);
+    return hydrated.map(normalizeAgentRow);
+  }
+
   return {
-    list: async (companyId: string, options?: { includeTerminated?: boolean }) => {
-      const conditions = [eq(agents.companyId, companyId)];
-      if (!options?.includeTerminated) {
-        conditions.push(ne(agents.status, "terminated"));
-      }
-      const rows = await db.select().from(agents).where(and(...conditions));
-      const hydrated = await hydrateAgentSpend(rows);
-      return hydrated.map(normalizeAgentRow);
-    },
+    list: listAgents,
 
     getById,
 
@@ -471,11 +473,15 @@ export function agentService(db: Db) {
     },
 
     pauseAll: async (companyId: string) => {
-      const allAgents = await agents.list(companyId, { includeTerminated: true });
+      const allAgents = await listAgents(companyId, { includeTerminated: true });
       let pausedCount = 0;
       for (const agent of allAgents) {
         if (agent.status !== "terminated" && agent.status !== "paused") {
-          await agents.pause(agent.id, "manual");
+          await updateAgent(agent.id, {
+            status: "paused",
+            pauseReason: "manual",
+            pausedAt: new Date(),
+          });
           pausedCount++;
         }
       }
@@ -483,11 +489,15 @@ export function agentService(db: Db) {
     },
 
     resumeAll: async (companyId: string) => {
-      const allAgents = await agents.list(companyId, { includeTerminated: true });
+      const allAgents = await listAgents(companyId, { includeTerminated: true });
       let resumedCount = 0;
       for (const agent of allAgents) {
         if (agent.status === "paused") {
-          await agents.resume(agent.id);
+          await updateAgent(agent.id, {
+            status: "idle",
+            pauseReason: null,
+            pausedAt: null,
+          });
           resumedCount++;
         }
       }

@@ -423,6 +423,25 @@ export function agentRoutes(db: Db) {
     return null;
   }
 
+  async function resolveCompanyIdForBulkAgentAction(req: Request): Promise<string | null> {
+    const companyIdQuery = req.query.companyId;
+    const requestedCompanyId =
+      typeof companyIdQuery === "string" && companyIdQuery.trim().length > 0
+        ? companyIdQuery.trim()
+        : null;
+    if (requestedCompanyId) {
+      assertCompanyAccess(req, requestedCompanyId);
+      return requestedCompanyId;
+    }
+    if (req.actor.type === "agent" && req.actor.companyId) {
+      return req.actor.companyId;
+    }
+    if (req.actor.type === "board" && Array.isArray(req.actor.companyIds) && req.actor.companyIds.length === 1) {
+      return req.actor.companyIds[0] ?? null;
+    }
+    return null;
+  }
+
   async function normalizeAgentReference(req: Request, rawId: string): Promise<string> {
     const raw = rawId.trim();
     if (isUuidLike(raw)) return raw;
@@ -2095,16 +2114,13 @@ export function agentRoutes(db: Db) {
   });
 
   router.post("/agents/bulk/pause", async (req, res) => {
-    console.log("[BULK PAUSE] actor:", req.actor);
     assertBoard(req);
-    const companyId = req.actor.companyIds?.[0];
-    console.log("[BULK PAUSE] companyId:", companyId);
+    const companyId = await resolveCompanyIdForBulkAgentAction(req);
     if (!companyId) {
-      res.status(403).json({ error: "No company access" });
+      res.status(400).json({ error: "companyId is required" });
       return;
     }
     const result = await svc.pauseAll(companyId);
-    console.log("[BULK PAUSE] result:", result);
 
     await logActivity(db, {
       companyId,
@@ -2120,16 +2136,13 @@ export function agentRoutes(db: Db) {
   });
 
   router.post("/agents/bulk/resume", async (req, res) => {
-    console.log("[BULK RESUME] actor:", req.actor);
     assertBoard(req);
-    const companyId = req.actor.companyIds?.[0];
-    console.log("[BULK RESUME] companyId:", companyId);
+    const companyId = await resolveCompanyIdForBulkAgentAction(req);
     if (!companyId) {
-      res.status(403).json({ error: "No company access" });
+      res.status(400).json({ error: "companyId is required" });
       return;
     }
     const result = await svc.resumeAll(companyId);
-    console.log("[BULK RESUME] result:", result);
 
     await logActivity(db, {
       companyId,

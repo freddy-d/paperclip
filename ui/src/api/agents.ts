@@ -146,8 +146,10 @@ export const agentsApi = {
     ),
   pause: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/pause"), {}),
   resume: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/resume"), {}),
-  bulkPause: () => api.post<{ pausedCount: number }>("/agents/bulk/pause", {}),
-  bulkResume: () => api.post<{ resumedCount: number }>("/agents/bulk/resume", {}),
+  bulkPause: (companyId: string) =>
+    api.post<{ pausedCount: number }>(withCompanyScope("/agents/bulk/pause", companyId), {}),
+  bulkResume: (companyId: string) =>
+    api.post<{ resumedCount: number }>(withCompanyScope("/agents/bulk/resume", companyId), {}),
   approve: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/approve"), {}),
   terminate: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/terminate"), {}),
   remove: (id: string, companyId?: string) => api.delete<{ ok: true }>(agentPath(id, companyId)),

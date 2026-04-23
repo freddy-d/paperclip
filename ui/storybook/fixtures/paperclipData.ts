@@ -614,6 +614,7 @@ function createProject(overrides: Partial<Project> = {}): Project {
       effectiveLocalFolder: storybookRepoRoot,
       origin: "local_folder",
     },
+    clients: [],
     workspaces: storybookProjectWorkspaces,
     primaryWorkspace: storybookProjectWorkspaces[0]!,
     archivedAt: null,

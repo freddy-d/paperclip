@@ -292,6 +292,7 @@ function createProject(overrides: Partial<Project> = {}): Project {
       effectiveLocalFolder: "/tmp/paperclip",
       origin: "local_folder",
     },
+    clients: [],
     workspaces: [primaryWorkspace],
     primaryWorkspace,
     archivedAt: null,
