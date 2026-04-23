@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "@/lib/router";
-import { useQuery, useMutation, queryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
 import { useCompany } from "../context/CompanyContext";
@@ -60,6 +60,7 @@ export function Agents() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isMobile } = useSidebar();
+  const queryClient = useQueryClient();
   const pathSegment = location.pathname.split("/").pop() ?? "all";
   const tab: FilterTab = (pathSegment === "all" || pathSegment === "active" || pathSegment === "paused" || pathSegment === "error") ? pathSegment : "all";
   const [view, setView] = useState<"list" | "org">("org");
@@ -114,17 +115,24 @@ export function Agents() {
 
   const resumableCount = useMemo(() => {
     return (agents ?? []).filter((a) => a.status === "paused").length;
-  }, [agents]);
+}, [agents]);
 
   const bulkPause = useMutation({
-    mutationFn: () => agentsApi.bulkPause(selectedCompanyId!),
+    mutationFn: () => agentsApi.bulkPause(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
     },
   });
 
   const bulkResume = useMutation({
-    mutationFn: () => agentsApi.bulkResume(selectedCompanyId!),
+    mutationFn: () => agentsApi.bulkResume(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
+    },
+  });
+
+  const bulkResume = useMutation({
+    mutationFn: () => agentsApi.bulkResume(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
     },
