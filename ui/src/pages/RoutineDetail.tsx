@@ -38,7 +38,7 @@ import {
 } from "../components/RoutineRunVariablesDialog";
 import { RoutineVariablesEditor, RoutineVariablesHint } from "../components/RoutineVariablesEditor";
 import { ScheduleEditor, describeSchedule } from "../components/ScheduleEditor";
-import { ScriptEditor } from "../components/ScriptEditor";
+import { RoutineScriptConfig } from "../components/RoutineScriptConfig";
 import { RunButton } from "../components/AgentActionButtons";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { getRecentProjectIds, trackRecentProject } from "../lib/recent-projects";
@@ -140,7 +140,7 @@ function buildRoutineMutationPayload(input: {
   catchUpPolicy: string;
   variables: RoutineVariable[];
   executionMode: string;
-  scriptBody: string;
+  scriptPath: string;
   scriptCommandArgs: string[];
   scriptTimeoutSec: number;
   remediationEnabled: boolean;
@@ -152,7 +152,7 @@ function buildRoutineMutationPayload(input: {
     description: input.description.trim() || null,
     projectId: input.projectId || null,
     assigneeAgentId: input.assigneeAgentId || null,
-    scriptBody: input.executionMode !== "agent" ? input.scriptBody || null : null,
+    scriptPath: input.executionMode !== "agent" ? input.scriptPath || null : null,
     scriptCommandArgs: input.executionMode !== "agent" ? input.scriptCommandArgs : null,
     remediationEnabled: input.remediationEnabled,
     remediationPrompt: input.remediationEnabled ? input.remediationPrompt || null : null,
@@ -376,7 +376,7 @@ export function RoutineDetail() {
     catchUpPolicy: string;
     variables: RoutineVariable[];
     executionMode: string;
-    scriptBody: string;
+    scriptPath: string;
     scriptCommandArgs: string[];
     scriptTimeoutSec: number;
     remediationEnabled: boolean;
@@ -392,7 +392,7 @@ export function RoutineDetail() {
     catchUpPolicy: "skip_missed",
     variables: [],
     executionMode: "agent",
-    scriptBody: "",
+    scriptPath: "",
     scriptCommandArgs: [],
     scriptTimeoutSec: 60,
     remediationEnabled: false,
@@ -460,7 +460,7 @@ export function RoutineDetail() {
             catchUpPolicy: routine.catchUpPolicy,
             variables: routine.variables,
             executionMode: routine.executionMode ?? "agent",
-            scriptBody: routine.scriptBody ?? "",
+            scriptPath: routine.scriptPath ?? "",
             scriptCommandArgs: routine.scriptCommandArgs ?? [],
             scriptTimeoutSec: routine.scriptTimeoutSec ?? 60,
             remediationEnabled: routine.remediationEnabled ?? false,
@@ -482,7 +482,7 @@ export function RoutineDetail() {
       editDraft.catchUpPolicy !== routineDefaults.catchUpPolicy ||
       JSON.stringify(editDraft.variables) !== JSON.stringify(routineDefaults.variables) ||
       editDraft.executionMode !== routineDefaults.executionMode ||
-      editDraft.scriptBody !== routineDefaults.scriptBody ||
+      editDraft.scriptPath !== routineDefaults.scriptPath ||
       editDraft.scriptCommandArgs !== routineDefaults.scriptCommandArgs ||
       editDraft.scriptTimeoutSec !== routineDefaults.scriptTimeoutSec ||
       editDraft.remediationEnabled !== routineDefaults.remediationEnabled ||
@@ -1056,20 +1056,15 @@ export function RoutineDetail() {
               </p>
             )}
           </div>
-          <ScriptEditor
-            value={editDraft.scriptBody}
-            onChange={(scriptBody) => setEditDraft((current) => ({ ...current, scriptBody }))}
-            language={editDraft.executionMode === "script_python" ? "python" : "javascript"}
+          <RoutineScriptConfig
+            projectId={editDraft.projectId}
+            companyId={routine?.companyId ?? undefined}
+            executionMode={editDraft.executionMode === "script_nodejs" ? "script_nodejs" : "script_python"}
+            scriptPath={editDraft.scriptPath}
+            scriptCommandArgs={editDraft.scriptCommandArgs}
+            onScriptPathChange={(scriptPath) => setEditDraft((current) => ({ ...current, scriptPath }))}
+            onArgsChange={(scriptCommandArgs) => setEditDraft((current) => ({ ...current, scriptCommandArgs }))}
           />
-          <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Arguments (optional)</p>
-            <Input
-              value={editDraft.scriptCommandArgs.join(" ")}
-              onChange={(e) => setEditDraft((current) => ({ ...current, scriptCommandArgs: e.target.value.split(" ").filter(Boolean) }))}
-              placeholder="--arg1 value --arg2 value"
-            />
-            <p className="text-xs text-muted-foreground">Command line arguments passed to the script.</p>
-          </div>
           <RoutineVariablesEditor
             title={editDraft.title}
             description=""

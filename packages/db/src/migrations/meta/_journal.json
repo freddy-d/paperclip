@@ -477,6 +477,13 @@
       "when": 1776102000000,
       "tag": "0067_routine_random_interval_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1776103000000,
+      "tag": "0068_routine_script_path",
+      "breakpoints": true
     }
   ]
 }

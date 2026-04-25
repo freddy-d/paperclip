@@ -51,7 +51,7 @@ export interface Routine {
   catchUpPolicy: string;
   variables: RoutineVariable[];
   executionMode: string;
-  scriptBody: string | null;
+  scriptPath: string | null;
   scriptCommandArgs: string[] | null;
   scriptTimeoutSec: number;
   remediationEnabled: boolean;

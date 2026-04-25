@@ -30,7 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RoutineVariablesEditor, RoutineVariablesHint } from "../components/RoutineVariablesEditor";
-import { ScriptEditor } from "../components/ScriptEditor";
+import { RoutineScriptConfig } from "../components/RoutineScriptConfig";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -137,7 +137,7 @@ function buildRoutineMutationPayload(input: {
   catchUpPolicy: string;
   variables: RoutineVariable[];
   executionMode: string;
-  scriptBody: string;
+  scriptPath: string;
   scriptCommandArgs: string[];
   scriptTimeoutSec: number;
   remediationEnabled: boolean;
@@ -149,7 +149,7 @@ function buildRoutineMutationPayload(input: {
     description: input.description.trim() || null,
     projectId: input.projectId || null,
     assigneeAgentId: input.assigneeAgentId || null,
-    scriptBody: input.executionMode !== "agent" ? input.scriptBody || null : null,
+    scriptPath: input.executionMode !== "agent" ? input.scriptPath || null : null,
     scriptCommandArgs: input.executionMode !== "agent" ? input.scriptCommandArgs : null,
     remediationEnabled: input.remediationEnabled,
     remediationPrompt: input.remediationEnabled ? input.remediationPrompt || null : null,
@@ -338,7 +338,7 @@ export function Routines() {
     catchUpPolicy: string;
     variables: RoutineVariable[];
     executionMode: string;
-    scriptBody: string;
+    scriptPath: string;
     scriptCommandArgs: string[];
     scriptTimeoutSec: number;
     remediationEnabled: boolean;
@@ -354,7 +354,7 @@ export function Routines() {
     catchUpPolicy: "skip_missed",
     variables: [],
     executionMode: "agent",
-    scriptBody: "",
+    scriptPath: "",
     scriptCommandArgs: [],
     scriptTimeoutSec: 60,
     remediationEnabled: false,
@@ -419,7 +419,7 @@ export function Routines() {
         catchUpPolicy: "skip_missed",
         variables: [],
         executionMode: "agent",
-        scriptBody: "",
+        scriptPath: "",
         scriptCommandArgs: [],
         scriptTimeoutSec: 60,
         remediationEnabled: false,
@@ -871,23 +871,15 @@ export function Routines() {
 
             {draft.executionMode !== "agent" && (
               <div className="space-y-3 px-5 pb-3">
-                <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Script</p>
-                  <ScriptEditor
-                    value={draft.scriptBody}
-                    onChange={(scriptBody) => setDraft((current) => ({ ...current, scriptBody }))}
-                    language={draft.executionMode === "script_python" ? "python" : "javascript"}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Arguments (optional)</p>
-                  <Input
-                    value={draft.scriptCommandArgs.join(" ")}
-                    onChange={(e) => setDraft((current) => ({ ...current, scriptCommandArgs: e.target.value.split(" ").filter(Boolean) }))}
-                    placeholder="--arg1 value --arg2 value"
-                  />
-                  <p className="text-xs text-muted-foreground">Command line arguments passed to the script.</p>
-                </div>
+                <RoutineScriptConfig
+                  projectId={draft.projectId}
+                  companyId={selectedCompanyId ?? undefined}
+                  executionMode={draft.executionMode === "script_nodejs" ? "script_nodejs" : "script_python"}
+                  scriptPath={draft.scriptPath}
+                  scriptCommandArgs={draft.scriptCommandArgs}
+                  onScriptPathChange={(scriptPath) => setDraft((current) => ({ ...current, scriptPath }))}
+                  onArgsChange={(scriptCommandArgs) => setDraft((current) => ({ ...current, scriptCommandArgs }))}
+                />
                 <RoutineVariablesEditor
                   title={draft.title}
                   description=""

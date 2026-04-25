@@ -1,7 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
@@ -43,6 +40,7 @@ import { conflict, forbidden, notFound, unauthorized, unprocessable } from "../e
 import { logger } from "../middleware/logger.js";
 import { getTelemetryClient } from "../telemetry.js";
 import { issueService } from "./issues.js";
+import { projectFilesService } from "./project-files.js";
 import { secretService } from "./secrets.js";
 import { parseCron, validateCron } from "./cron.js";
 import { heartbeatService } from "./heartbeat.js";
@@ -1125,11 +1123,8 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
     allVariables: Record<string, string | number | boolean>;
   }) {
     const { run, routine, allVariables } = input;
-    const scriptBody = routine.scriptBody ?? "";
     const isNodeJs = routine.executionMode === "script_nodejs";
-    const ext = isNodeJs ? ".js" : ".py";
     const command = isNodeJs ? "node" : "python3";
-    const tmpFile = path.join(os.tmpdir(), `routine-${run.id}${ext}`);
     const scriptArgs = routine.scriptCommandArgs ?? [];
 
     // Build env: pass all resolved variables as ROUTINE_VAR_<NAME>
@@ -1140,9 +1135,18 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
 
     let output = "";
     try {
-      await fs.writeFile(tmpFile, scriptBody, "utf8");
-      const result = await runChildProcess(run.id, command, [tmpFile, ...scriptArgs], {
-        cwd: os.tmpdir(),
+      if (!routine.projectId) {
+        throw new Error("Script routines require a project");
+      }
+      if (!routine.scriptPath) {
+        throw new Error("Script path is not configured");
+      }
+      const { absolutePath, rootPath } = await projectFilesService(db).resolveAbsolutePath(
+        routine.projectId,
+        routine.scriptPath,
+      );
+      const result = await runChildProcess(run.id, command, [absolutePath, ...scriptArgs], {
+        cwd: rootPath,
         env,
         timeoutSec: routine.scriptTimeoutSec,
         graceSec: 5,
@@ -1190,8 +1194,6 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
         await createRemediationIssueIfNeeded(routine, finalRun ?? run, output, failureReason);
       }
       return finalRun ?? run;
-    } finally {
-      await fs.unlink(tmpFile).catch(() => {});
     }
   }
 
@@ -1450,7 +1452,7 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
           catchUpPolicy: input.catchUpPolicy,
           variables,
           executionMode: input.executionMode,
-          scriptBody: input.scriptBody ?? null,
+          scriptPath: input.scriptPath ?? null,
           scriptTimeoutSec: input.scriptTimeoutSec,
           scriptCommandArgs: input.scriptCommandArgs ?? null,
           remediationEnabled: input.remediationEnabled ?? false,
@@ -1519,7 +1521,7 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
           catchUpPolicy: patch.catchUpPolicy ?? existing.catchUpPolicy,
           variables: nextVariables,
           executionMode: nextExecutionMode,
-          scriptBody: patch.scriptBody === undefined ? existing.scriptBody : patch.scriptBody ?? null,
+          scriptPath: patch.scriptPath === undefined ? existing.scriptPath : patch.scriptPath ?? null,
           scriptTimeoutSec: patch.scriptTimeoutSec ?? existing.scriptTimeoutSec,
           scriptCommandArgs: patch.scriptCommandArgs === undefined ? existing.scriptCommandArgs : patch.scriptCommandArgs ?? null,
           remediationEnabled: patch.remediationEnabled ?? existing.remediationEnabled,
@@ -2074,5 +2076,29 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
     },
 
     createRemediationIssueIfNeeded,
+
+    detectScriptArgs: async (projectId: string, scriptPath: string, executionMode: "script_nodejs" | "script_python") => {
+      const { parseHelpOutput } = await import("./script-help-parser.js");
+      const { absolutePath, rootPath } = await projectFilesService(db).resolveAbsolutePath(projectId, scriptPath);
+      const command = executionMode === "script_nodejs" ? "node" : "python3";
+      let output = "";
+      const result = await runChildProcess(`detect-${crypto.randomUUID()}`, command, [absolutePath, "--help"], {
+        cwd: rootPath,
+        env: {},
+        timeoutSec: 5,
+        graceSec: 2,
+        onLog: async (_stream, chunk) => {
+          output += chunk;
+          if (output.length > 10 * 1024) output = output.slice(0, 10 * 1024);
+        },
+      });
+      if (!output && result.stdout) output = result.stdout.slice(0, 10 * 1024);
+      if (!output && result.stderr) output = result.stderr.slice(0, 10 * 1024);
+      if (result.timedOut) {
+        return { args: [], error: "Script --help timed out after 5s" };
+      }
+      const args = parseHelpOutput(output);
+      return { args, error: args.length === 0 ? "No arguments detected in --help output" : null };
+    },
   };
 }

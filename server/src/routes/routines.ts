@@ -85,6 +85,23 @@ export function routineRoutes(db: Db) {
     res.status(201).json(created);
   });
 
+  router.post("/projects/:projectId/scripts/detect-args", async (req, res) => {
+    const projectId = req.params.projectId as string;
+    const scriptPath = typeof req.body?.scriptPath === "string" ? req.body.scriptPath : "";
+    const executionMode = req.body?.executionMode === "script_nodejs" ? "script_nodejs" : "script_python";
+    if (!scriptPath.trim()) {
+      res.status(400).json({ error: "scriptPath is required" });
+      return;
+    }
+    try {
+      const result = await svc.detectScriptArgs(projectId, scriptPath, executionMode);
+      res.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ args: [], error: message });
+    }
+  });
+
   router.get("/routines/:id", async (req, res) => {
     const detail = await svc.getDetail(req.params.id as string);
     if (!detail) {

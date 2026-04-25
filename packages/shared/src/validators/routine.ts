@@ -61,7 +61,7 @@ export const createRoutineSchema = z.object({
   catchUpPolicy: z.enum(ROUTINE_CATCH_UP_POLICIES).optional().default("skip_missed"),
   variables: z.array(routineVariableSchema).optional().default([]),
   executionMode: z.enum(ROUTINE_EXECUTION_MODES).optional().default("agent"),
-  scriptBody: z.string().optional().nullable(),
+  scriptPath: z.string().trim().max(500).optional().nullable(),
   scriptCommandArgs: z.array(z.string().trim().max(500)).max(100).optional().default([]),
   scriptTimeoutSec: z.number().int().min(1).max(3600).optional().default(60),
   remediationEnabled: z.boolean().optional().default(false),

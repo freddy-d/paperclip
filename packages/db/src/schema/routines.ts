@@ -34,7 +34,7 @@ export const routines = pgTable(
     catchUpPolicy: text("catch_up_policy").notNull().default("skip_missed"),
     variables: jsonb("variables").$type<RoutineVariable[]>().notNull().default([]),
     executionMode: text("execution_mode").notNull().default("agent"),
-    scriptBody: text("script_body"),
+    scriptPath: text("script_path"),
     scriptTimeoutSec: integer("script_timeout_sec").notNull().default(60),
     scriptCommandArgs: text("script_command_args").array(),
     remediationEnabled: boolean("remediation_enabled").notNull().default(false),

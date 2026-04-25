@@ -226,7 +226,7 @@ function createRoutine(overrides: Partial<RoutineListItem>): RoutineListItem {
     catchUpPolicy: "skip_missed",
     variables: [],
     executionMode: "agent",
-    scriptBody: null,
+    scriptPath: null,
     scriptCommandArgs: null,
     scriptTimeoutSec: 60,
     remediationEnabled: false,
