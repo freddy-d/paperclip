@@ -214,7 +214,6 @@ function RoutineListRow({
   const isArchived = routine.status === "archived";
   const project = routine.projectId ? projectById.get(routine.projectId) ?? null : null;
   const agent = routine.assigneeAgentId ? agentById.get(routine.assigneeAgentId) ?? null : null;
-  const isDraft = !isArchived && routine.executionMode === "agent" && !routine.assigneeAgentId;
 
   return (
     <Link
@@ -224,9 +223,9 @@ function RoutineListRow({
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate text-sm font-medium">{routine.title}</span>
-          {(isArchived || routine.status === "paused" || isDraft) ? (
+          {!enabled ? (
             <span className="text-xs text-muted-foreground">
-              {isArchived ? "archived" : isDraft ? "draft" : "paused"}
+              {routine.status}
             </span>
           ) : null}
         </div>
@@ -251,7 +250,7 @@ function RoutineListRow({
 
       <div className="flex items-center gap-3" onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}>
         <span className="text-xs text-muted-foreground">
-          {isArchived ? "archived" : isDraft ? "draft" : enabled ? "active" : "paused"}
+          {routine.status}
         </span>
 
         <DropdownMenu>
