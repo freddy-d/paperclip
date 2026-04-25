@@ -1688,6 +1688,13 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       return (updated as RoutineTrigger | undefined) ?? null;
     },
 
+    deleteRoutine: async (id: string): Promise<boolean> => {
+      const existing = await getRoutineById(id);
+      if (!existing) return false;
+      await db.delete(routines).where(eq(routines.id, id));
+      return true;
+    },
+
     deleteTrigger: async (id: string): Promise<boolean> => {
       const existing = await getTriggerById(id);
       if (!existing) return false;

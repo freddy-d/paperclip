@@ -15,7 +15,6 @@ import { groupBy } from "../lib/groupBy";
 import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { getRecentProjectIds, trackRecentProject } from "../lib/recent-projects";
-import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { EmptyState } from "../components/EmptyState";
 import { IssuesList } from "../components/IssuesList";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -74,11 +73,6 @@ function autoResizeTextarea(element: HTMLTextAreaElement | null) {
 function formatLastRunTimestamp(value: Date | string | null | undefined) {
   if (!value) return "Never";
   return new Date(value).toLocaleString();
-}
-
-function nextRoutineStatus(currentStatus: string, enabled: boolean) {
-  if (currentStatus === "archived" && enabled) return "active";
-  return enabled ? "active" : "paused";
 }
 
 type RoutinesTab = "routines" | "runs";
@@ -205,25 +199,18 @@ function RoutineListRow({
   projectById,
   agentById,
   runningRoutineId,
-  statusMutationRoutineId,
   href,
   onRunNow,
-  onToggleEnabled,
-  onToggleArchived,
 }: {
   routine: RoutineListItem;
   projectById: Map<string, { name: string; color?: string | null }>;
   agentById: Map<string, { name: string; icon?: string | null }>;
   runningRoutineId: string | null;
-  statusMutationRoutineId: string | null;
   href: string;
   onRunNow: (routine: RoutineListItem) => void;
-  onToggleEnabled: (routine: RoutineListItem, enabled: boolean) => void;
-  onToggleArchived: (routine: RoutineListItem) => void;
 }) {
   const enabled = routine.status === "active";
   const isArchived = routine.status === "archived";
-  const isStatusPending = statusMutationRoutineId === routine.id;
   const project = routine.projectId ? projectById.get(routine.projectId) ?? null : null;
   const agent = routine.assigneeAgentId ? agentById.get(routine.assigneeAgentId) ?? null : null;
   const isDraft = !isArchived && !routine.assigneeAgentId;
@@ -262,18 +249,9 @@ function RoutineListRow({
       </div>
 
       <div className="flex items-center gap-3" onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}>
-        <div className="flex items-center gap-3">
-          <ToggleSwitch
-            size="lg"
-            checked={enabled}
-            onCheckedChange={() => onToggleEnabled(routine, enabled)}
-            disabled={isStatusPending || isArchived}
-            aria-label={enabled ? `Disable ${routine.title}` : `Enable ${routine.title}`}
-          />
-          <span className="w-12 text-xs text-muted-foreground">
-            {isArchived ? "Archived" : isDraft ? "Draft" : enabled ? "On" : "Off"}
-          </span>
-        </div>
+        <span className="text-xs text-muted-foreground">
+          {isArchived ? "archived" : isDraft ? "draft" : enabled ? "active" : "paused"}
+        </span>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -290,19 +268,6 @@ function RoutineListRow({
               onClick={() => onRunNow(routine)}
             >
               {runningRoutineId === routine.id ? "Running..." : "Run now"}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => onToggleEnabled(routine, enabled)}
-              disabled={isStatusPending || isArchived}
-            >
-              {enabled ? "Pause" : "Enable"}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onToggleArchived(routine)}
-              disabled={isStatusPending}
-            >
-              {routine.status === "archived" ? "Restore" : "Archive"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -323,7 +288,6 @@ export function Routines() {
   const assigneeSelectorRef = useRef<HTMLButtonElement | null>(null);
   const projectSelectorRef = useRef<HTMLButtonElement | null>(null);
   const [runningRoutineId, setRunningRoutineId] = useState<string | null>(null);
-  const [statusMutationRoutineId, setStatusMutationRoutineId] = useState<string | null>(null);
   const [runDialogRoutine, setRunDialogRoutine] = useState<RoutineListItem | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -447,29 +411,6 @@ export function Routines() {
     },
   });
 
-  const updateRoutineStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => routinesApi.update(id, { status }),
-    onMutate: ({ id }) => {
-      setStatusMutationRoutineId(id);
-    },
-    onSuccess: async (_, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.routines.detail(variables.id) }),
-      ]);
-    },
-    onSettled: () => {
-      setStatusMutationRoutineId(null);
-    },
-    onError: (mutationError) => {
-      pushToast({
-        title: "Failed to update routine",
-        body: mutationError instanceof Error ? mutationError.message : "Paperclip could not update the routine.",
-        tone: "error",
-      });
-    },
-  });
-
   const runRoutine = useMutation({
     mutationFn: ({ id, data }: { id: string; data?: RoutineRunDialogSubmitData }) => routinesApi.run(id, {
       ...(data?.variables && Object.keys(data.variables).length > 0 ? { variables: data.variables } : {}),
@@ -576,28 +517,6 @@ export function Routines() {
 
   function handleRunNow(routine: RoutineListItem) {
     setRunDialogRoutine(routine);
-  }
-
-  function handleToggleEnabled(routine: RoutineListItem, enabled: boolean) {
-    if (!enabled && !routine.assigneeAgentId) {
-      pushToast({
-        title: "Default agent required",
-        body: "Set a default agent before enabling routine automation.",
-        tone: "warn",
-      });
-      return;
-    }
-    updateRoutineStatus.mutate({
-      id: routine.id,
-      status: nextRoutineStatus(routine.status, !enabled),
-    });
-  }
-
-  function handleToggleArchived(routine: RoutineListItem) {
-    updateRoutineStatus.mutate({
-      id: routine.id,
-      status: routine.status === "archived" ? "active" : "archived",
-    });
   }
 
   if (!selectedCompanyId) {
@@ -1081,11 +1000,8 @@ export function Routines() {
                         projectById={projectById}
                         agentById={agentById}
                         runningRoutineId={runningRoutineId}
-                        statusMutationRoutineId={statusMutationRoutineId}
                         href={`/routines/${routine.id}`}
                         onRunNow={handleRunNow}
-                        onToggleEnabled={handleToggleEnabled}
-                        onToggleArchived={handleToggleArchived}
                       />
                     ))}
                   </CollapsibleContent>

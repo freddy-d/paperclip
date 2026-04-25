@@ -357,6 +357,7 @@ export function RoutineDetail() {
   const projectSelectorRef = useRef<HTMLButtonElement | null>(null);
   const [secretMessage, setSecretMessage] = useState<SecretMessage | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [deleteConfirmStep, setDeleteConfirmStep] = useState<0 | 1>(0);
   const [runVariablesOpen, setRunVariablesOpen] = useState(false);
   const [newTrigger, setNewTrigger] = useState({
     kind: "schedule",
@@ -731,6 +732,22 @@ export function RoutineDetail() {
         body: error instanceof Error ? error.message : "Paperclip could not rotate the webhook secret.",
         tone: "error",
       });
+    },
+  });
+
+  const deleteRoutine = useMutation({
+    mutationFn: () => routinesApi.delete(routineId!),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) });
+      navigate("/routines");
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Failed to delete routine",
+        body: error instanceof Error ? error.message : "Paperclip could not delete the routine.",
+        tone: "error",
+      });
+      setDeleteConfirmStep(0);
     },
   });
 
@@ -1411,6 +1428,48 @@ export function RoutineDetail() {
         isPending={runRoutine.isPending}
         onSubmit={(data) => runRoutine.mutate(data)}
       />
+
+      <Separator />
+
+      <div className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Danger zone</p>
+        {deleteConfirmStep === 0 ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive border-destructive/40 hover:bg-destructive/10"
+            onClick={() => setDeleteConfirmStep(1)}
+          >
+            <Trash2 className="mr-2 h-3.5 w-3.5" />
+            Delete routine
+          </Button>
+        ) : (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 space-y-3">
+            <p className="text-sm font-medium text-destructive">Delete "{routine.title}"?</p>
+            <p className="text-xs text-muted-foreground">
+              This permanently deletes the routine, all its triggers, and all run history. This cannot be undone.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleteRoutine.isPending}
+                onClick={() => deleteRoutine.mutate()}
+              >
+                {deleteRoutine.isPending ? "Deleting..." : "Yes, delete permanently"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={deleteRoutine.isPending}
+                onClick={() => setDeleteConfirmStep(0)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
