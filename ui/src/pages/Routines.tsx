@@ -214,7 +214,7 @@ function RoutineListRow({
   const isArchived = routine.status === "archived";
   const project = routine.projectId ? projectById.get(routine.projectId) ?? null : null;
   const agent = routine.assigneeAgentId ? agentById.get(routine.assigneeAgentId) ?? null : null;
-  const isDraft = !isArchived && !routine.assigneeAgentId;
+  const isDraft = !isArchived && routine.executionMode === "agent" && !routine.assigneeAgentId;
 
   return (
     <Link
@@ -240,7 +240,7 @@ function RoutineListRow({
           </span>
           <span className="flex items-center gap-2">
             {agent?.icon ? <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0" /> : null}
-            <span>{routine.assigneeAgentId ? (agent?.name ?? "Unknown agent") : "No default agent"}</span>
+            <span>{routine.assigneeAgentId ? (agent?.name ?? "Unknown agent") : routine.executionMode === "agent" ? "No default agent" : "Script"}</span>
           </span>
           <span>
             {formatLastRunTimestamp(routine.lastRun?.triggeredAt)}
