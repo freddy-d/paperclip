@@ -1189,6 +1189,52 @@ export function RoutineDetail() {
       {/* Script mode: code editor */}
       {isScriptMode && (
         <div className="space-y-2">
+          <div className="overflow-x-auto overscroll-x-contain">
+            <div className="inline-flex min-w-full flex-wrap items-center gap-2 text-sm text-muted-foreground sm:min-w-max sm:flex-nowrap">
+              <span>In</span>
+              <InlineEntitySelector
+                ref={projectSelectorRef}
+                value={editDraft.projectId}
+                options={projectOptions}
+                recentOptionIds={recentProjectIds}
+                placeholder="Project"
+                noneLabel="No project"
+                searchPlaceholder="Search projects..."
+                emptyMessage="No projects found."
+                onChange={(projectId) => {
+                  if (projectId) trackRecentProject(projectId);
+                  setEditDraft((current) => ({ ...current, projectId }));
+                }}
+                onConfirm={() => {}}
+                renderTriggerValue={(option) =>
+                  option && currentProject ? (
+                    <>
+                      <span
+                        className="h-3.5 w-3.5 shrink-0 rounded-sm"
+                        style={{ backgroundColor: currentProject.color ?? "#64748b" }}
+                      />
+                      <span className="truncate">{option.label}</span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">Project</span>
+                  )
+                }
+                renderOption={(option) => {
+                  if (!option.id) return <span className="truncate">{option.label}</span>;
+                  const project = projectById.get(option.id);
+                  return (
+                    <>
+                      <span
+                        className="h-3.5 w-3.5 shrink-0 rounded-sm"
+                        style={{ backgroundColor: project?.color ?? "#64748b" }}
+                      />
+                      <span className="truncate">{option.label}</span>
+                    </>
+                  );
+                }}
+              />
+            </div>
+          </div>
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Script</p>
             {editDraft.variables.length > 0 && (

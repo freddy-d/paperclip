@@ -1272,13 +1272,23 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
     if (!routine.remediationPrompt) return;
     if (!isRemediableFailure(failureReason)) return;
 
-    const assigneeId = routine.remediationAssigneeAgentId ?? routine.assigneeAgentId;
+    let assigneeId = routine.remediationAssigneeAgentId ?? routine.assigneeAgentId;
     if (!assigneeId) {
-      logger.warn(
-        { routineId: routine.id, runId: failedRun.id },
-        "remediation enabled but no assignee configured",
-      );
-      return;
+      const fallback = await db
+        .select({ id: agents.id })
+        .from(agents)
+        .where(and(eq(agents.companyId, routine.companyId), ne(agents.status, "terminated")))
+        .orderBy(asc(agents.createdAt))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (!fallback) {
+        logger.warn(
+          { routineId: routine.id, runId: failedRun.id },
+          "remediation enabled but no agents in company",
+        );
+        return;
+      }
+      assigneeId = fallback.id;
     }
 
     const existingRemediationRun = await db

@@ -396,9 +396,11 @@ export function Routines() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) });
       pushToast({
         title: "Routine created",
-        body: routine.assigneeAgentId
-          ? "Add the first trigger to turn it into a live workflow."
-          : "Draft saved. Add a default agent before enabling automation.",
+        body: routine.executionMode !== "agent"
+          ? "Add the first trigger to start running the script automatically."
+          : routine.assigneeAgentId
+            ? "Add the first trigger to turn it into a live workflow."
+            : "Draft saved. Add a default agent before enabling automation.",
         tone: "success",
       });
       navigate(`/routines/${routine.id}?tab=triggers`);
@@ -697,52 +699,56 @@ export function Routines() {
             <div className="px-5 pb-3">
               <div className="overflow-x-auto overscroll-x-contain">
                 <div className="inline-flex min-w-full flex-wrap items-center gap-2 text-sm text-muted-foreground sm:min-w-max sm:flex-nowrap">
-                  <span>For</span>
-                  <InlineEntitySelector
-                    ref={assigneeSelectorRef}
-                    value={draft.assigneeAgentId}
-                    options={assigneeOptions}
-                    recentOptionIds={recentAssigneeIds}
-                    placeholder="Assignee"
-                    noneLabel="No assignee"
-                    searchPlaceholder="Search assignees..."
-                    emptyMessage="No assignees found."
-                    onChange={(assigneeAgentId) => {
-                      if (assigneeAgentId) trackRecentAssignee(assigneeAgentId);
-                      setDraft((current) => ({ ...current, assigneeAgentId }));
-                    }}
-                    onConfirm={() => {
-                      if (draft.projectId) {
-                        descriptionEditorRef.current?.focus();
-                      } else {
-                        projectSelectorRef.current?.focus();
-                      }
-                    }}
-                    renderTriggerValue={(option) =>
-                      option ? (
-                        currentAssignee ? (
-                          <>
-                            <AgentIcon icon={currentAssignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <span className="truncate">{option.label}</span>
-                          </>
-                        ) : (
-                          <span className="truncate">{option.label}</span>
-                        )
-                      ) : (
-                        <span className="text-muted-foreground">Assignee</span>
-                      )
-                    }
-                    renderOption={(option) => {
-                      if (!option.id) return <span className="truncate">{option.label}</span>;
-                      const assignee = agentById.get(option.id);
-                      return (
-                        <>
-                          {assignee ? <AgentIcon icon={assignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
-                          <span className="truncate">{option.label}</span>
-                        </>
-                      );
-                    }}
-                  />
+                  {draft.executionMode === "agent" && (
+                    <>
+                      <span>For</span>
+                      <InlineEntitySelector
+                        ref={assigneeSelectorRef}
+                        value={draft.assigneeAgentId}
+                        options={assigneeOptions}
+                        recentOptionIds={recentAssigneeIds}
+                        placeholder="Assignee"
+                        noneLabel="No assignee"
+                        searchPlaceholder="Search assignees..."
+                        emptyMessage="No assignees found."
+                        onChange={(assigneeAgentId) => {
+                          if (assigneeAgentId) trackRecentAssignee(assigneeAgentId);
+                          setDraft((current) => ({ ...current, assigneeAgentId }));
+                        }}
+                        onConfirm={() => {
+                          if (draft.projectId) {
+                            descriptionEditorRef.current?.focus();
+                          } else {
+                            projectSelectorRef.current?.focus();
+                          }
+                        }}
+                        renderTriggerValue={(option) =>
+                          option ? (
+                            currentAssignee ? (
+                              <>
+                                <AgentIcon icon={currentAssignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <span className="truncate">{option.label}</span>
+                              </>
+                            ) : (
+                              <span className="truncate">{option.label}</span>
+                            )
+                          ) : (
+                            <span className="text-muted-foreground">Assignee</span>
+                          )
+                        }
+                        renderOption={(option) => {
+                          if (!option.id) return <span className="truncate">{option.label}</span>;
+                          const assignee = agentById.get(option.id);
+                          return (
+                            <>
+                              {assignee ? <AgentIcon icon={assignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
+                              <span className="truncate">{option.label}</span>
+                            </>
+                          );
+                        }}
+                      />
+                    </>
+                  )}
                   <span>in</span>
                   <InlineEntitySelector
                     ref={projectSelectorRef}
