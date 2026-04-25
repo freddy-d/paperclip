@@ -48,6 +48,7 @@ import { heartbeatService } from "./heartbeat.js";
 import { queueIssueAssignmentWakeup, type IssueAssignmentWakeupDeps } from "./issue-assignment-wakeup.js";
 import { logActivity } from "./activity-log.js";
 import { runChildProcess } from "../adapters/utils.js";
+import { sendRoutineFailureEmail } from "./email.js";
 
 const OPEN_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked"];
 const LIVE_HEARTBEAT_RUN_STATUSES = ["queued", "running", "scheduled_retry"];
@@ -1263,6 +1264,15 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       if (!succeeded && routine.remediationEnabled && isRemediableFailure(failureReason)) {
         await createRemediationIssueIfNeeded(routine, finalRun ?? run, output, failureReason);
       }
+      if (!succeeded && routine.notificationEmail) {
+        sendRoutineFailureEmail({
+          to: routine.notificationEmail,
+          routineTitle: routine.title,
+          routineId: routine.id,
+          runId: run.id,
+          failureReason,
+        }).catch((err) => logger.warn({ err }, "failed to send routine failure email"));
+      }
       return finalRun ?? run;
     } catch (error) {
       const failureReason = error instanceof Error ? error.message : String(error);
@@ -1275,6 +1285,15 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       });
       if (routine.remediationEnabled && isRemediableFailure(failureReason)) {
         await createRemediationIssueIfNeeded(routine, finalRun ?? run, output, failureReason);
+      }
+      if (routine.notificationEmail) {
+        sendRoutineFailureEmail({
+          to: routine.notificationEmail,
+          routineTitle: routine.title,
+          routineId: routine.id,
+          runId: run.id,
+          failureReason,
+        }).catch((err) => logger.warn({ err }, "failed to send routine failure email"));
       }
       return finalRun ?? run;
     }
@@ -1852,6 +1871,41 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       if (!existing) return false;
       await db.delete(routines).where(eq(routines.id, id));
       return true;
+    },
+
+    clone: async (id: string, actor: Actor): Promise<Routine | null> => {
+      const source = await getRoutineById(id);
+      if (!source) return null;
+      const [cloned] = await db
+        .insert(routines)
+        .values({
+          companyId: source.companyId,
+          projectId: source.projectId,
+          goalId: source.goalId,
+          parentIssueId: source.parentIssueId,
+          title: `Copy of ${source.title}`,
+          description: source.description,
+          assigneeAgentId: source.assigneeAgentId,
+          priority: source.priority,
+          status: "paused",
+          concurrencyPolicy: source.concurrencyPolicy,
+          catchUpPolicy: source.catchUpPolicy,
+          variables: source.variables,
+          executionMode: source.executionMode,
+          scriptPath: source.scriptPath,
+          scriptTimeoutSec: source.scriptTimeoutSec,
+          scriptCommandArgs: source.scriptCommandArgs,
+          remediationEnabled: source.remediationEnabled,
+          remediationPrompt: source.remediationPrompt,
+          remediationAssigneeAgentId: source.remediationAssigneeAgentId,
+          notificationEmail: source.notificationEmail,
+          createdByAgentId: actor.agentId ?? null,
+          createdByUserId: actor.userId ?? null,
+          updatedByAgentId: actor.agentId ?? null,
+          updatedByUserId: actor.userId ?? null,
+        })
+        .returning();
+      return cloned;
     },
 
     deleteTrigger: async (id: string): Promise<boolean> => {

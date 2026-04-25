@@ -232,6 +232,7 @@ function createRoutine(overrides: Partial<RoutineListItem>): RoutineListItem {
     remediationEnabled: false,
     remediationPrompt: null,
     remediationAssigneeAgentId: null,
+    notificationEmail: null,
     createdByAgentId: null,
     createdByUserId: null,
     updatedByAgentId: null,

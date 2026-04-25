@@ -186,6 +186,19 @@ export function routineRoutes(db: Db) {
     res.status(204).end();
   });
 
+  router.post("/routines/:id/clone", async (req, res) => {
+    const routine = await assertCanManageExistingRoutine(req, req.params.id as string);
+    if (!routine) {
+      res.status(404).json({ error: "Routine not found" });
+      return;
+    }
+    const cloned = await svc.clone(routine.id, {
+      agentId: req.actor.type === "agent" ? req.actor.agentId : null,
+      userId: req.actor.type === "board" ? req.actor.userId ?? "board" : null,
+    });
+    res.status(201).json(cloned);
+  });
+
   router.get("/routines/:id/runs", async (req, res) => {
     const routine = await svc.get(req.params.id as string);
     if (!routine) {

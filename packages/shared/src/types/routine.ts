@@ -57,6 +57,7 @@ export interface Routine {
   remediationEnabled: boolean;
   remediationPrompt: string | null;
   remediationAssigneeAgentId: string | null;
+  notificationEmail: string | null;
   createdByAgentId: string | null;
   createdByUserId: string | null;
   updatedByAgentId: string | null;

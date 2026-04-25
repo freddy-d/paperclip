@@ -40,6 +40,7 @@ export const routines = pgTable(
     remediationEnabled: boolean("remediation_enabled").notNull().default(false),
     remediationPrompt: text("remediation_prompt"),
     remediationAssigneeAgentId: uuid("remediation_assignee_agent_id").references(() => agents.id, { onDelete: "set null" }),
+    notificationEmail: text("notification_email"),
     createdByAgentId: uuid("created_by_agent_id").references(() => agents.id, { onDelete: "set null" }),
     createdByUserId: text("created_by_user_id"),
     updatedByAgentId: uuid("updated_by_agent_id").references(() => agents.id, { onDelete: "set null" }),

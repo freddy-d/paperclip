@@ -183,6 +183,7 @@ function buildRoutineMutationPayload(input: {
   remediationEnabled: boolean;
   remediationPrompt: string;
   remediationAssigneeAgentId: string;
+  notificationEmail: string;
 }) {
   return {
     ...input,
@@ -194,6 +195,7 @@ function buildRoutineMutationPayload(input: {
     remediationEnabled: input.remediationEnabled,
     remediationPrompt: input.remediationEnabled ? input.remediationPrompt || null : null,
     remediationAssigneeAgentId: input.remediationEnabled ? input.remediationAssigneeAgentId || null : null,
+    notificationEmail: input.notificationEmail.trim() || null,
   };
 }
 
@@ -475,6 +477,7 @@ export function RoutineDetail() {
     remediationEnabled: boolean;
     remediationPrompt: string;
     remediationAssigneeAgentId: string;
+    notificationEmail: string;
   }>({
     title: "",
     description: "",
@@ -491,6 +494,7 @@ export function RoutineDetail() {
     remediationEnabled: false,
     remediationPrompt: "",
     remediationAssigneeAgentId: "",
+    notificationEmail: "",
   });
   const activeTab = useMemo(() => getRoutineTabFromSearch(location.search), [location.search]);
 
@@ -559,6 +563,7 @@ export function RoutineDetail() {
             remediationEnabled: routine.remediationEnabled ?? false,
             remediationPrompt: routine.remediationPrompt ?? "",
             remediationAssigneeAgentId: routine.remediationAssigneeAgentId ?? "",
+            notificationEmail: routine.notificationEmail ?? "",
           }
         : null,
     [routine],
@@ -580,7 +585,8 @@ export function RoutineDetail() {
       editDraft.scriptTimeoutSec !== routineDefaults.scriptTimeoutSec ||
       editDraft.remediationEnabled !== routineDefaults.remediationEnabled ||
       editDraft.remediationPrompt !== routineDefaults.remediationPrompt ||
-      editDraft.remediationAssigneeAgentId !== routineDefaults.remediationAssigneeAgentId
+      editDraft.remediationAssigneeAgentId !== routineDefaults.remediationAssigneeAgentId ||
+      editDraft.notificationEmail !== routineDefaults.notificationEmail
     );
   }, [editDraft, routineDefaults]);
 
@@ -850,6 +856,22 @@ export function RoutineDetail() {
         tone: "error",
       });
       setDeleteConfirmStep(0);
+    },
+  });
+
+  const cloneRoutine = useMutation({
+    mutationFn: () => routinesApi.clone(routineId!),
+    onSuccess: async (cloned) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) });
+      pushToast({ title: "Routine duplicated", body: `"${cloned.title}" created as paused.`, tone: "success" });
+      navigate(`/routines/${cloned.id}`);
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Duplicate failed",
+        body: error instanceof Error ? error.message : "Could not duplicate the routine.",
+        tone: "error",
+      });
     },
   });
 
@@ -1360,6 +1382,16 @@ export function RoutineDetail() {
                     </div>
                   </>
                 )}
+                <div className="space-y-1.5 border-t border-border pt-3">
+                  <Label className="text-xs">Failure notification email</Label>
+                  <Input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={editDraft.notificationEmail}
+                    onChange={(e) => setEditDraft((current) => ({ ...current, notificationEmail: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">Receives an email when this routine fails.</p>
+                </div>
               </div>
             )}
           </div>
@@ -1686,6 +1718,15 @@ export function RoutineDetail() {
 
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Danger zone</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => cloneRoutine.mutate()}
+          disabled={cloneRoutine.isPending}
+        >
+          <Copy className="mr-2 h-3.5 w-3.5" />
+          {cloneRoutine.isPending ? "Duplicating..." : "Duplicate routine"}
+        </Button>
         {deleteConfirmStep === 0 ? (
           <Button
             variant="outline"

@@ -140,6 +140,7 @@ function buildRoutineMutationPayload(input: {
   remediationEnabled: boolean;
   remediationPrompt: string;
   remediationAssigneeAgentId: string;
+  notificationEmail: string;
 }) {
   return {
     ...input,
@@ -151,6 +152,7 @@ function buildRoutineMutationPayload(input: {
     remediationEnabled: input.remediationEnabled,
     remediationPrompt: input.remediationEnabled ? input.remediationPrompt || null : null,
     remediationAssigneeAgentId: input.remediationEnabled ? input.remediationAssigneeAgentId || null : null,
+    notificationEmail: input.notificationEmail.trim() || null,
   };
 }
 
@@ -204,6 +206,7 @@ function RoutineListRow({
   runningRoutineId,
   href,
   onRunNow,
+  onClone,
 }: {
   routine: RoutineListItem;
   projectById: Map<string, { name: string; color?: string | null }>;
@@ -211,6 +214,7 @@ function RoutineListRow({
   runningRoutineId: string | null;
   href: string;
   onRunNow: (routine: RoutineListItem) => void;
+  onClone: (routine: RoutineListItem) => void;
 }) {
   const enabled = routine.status === "active";
   const isArchived = routine.status === "archived";
@@ -271,6 +275,9 @@ function RoutineListRow({
             >
               {runningRoutineId === routine.id ? "Running..." : "Run now"}
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onClone(routine)}>
+              Duplicate
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -310,6 +317,7 @@ export function Routines() {
     remediationEnabled: boolean;
     remediationPrompt: string;
     remediationAssigneeAgentId: string;
+    notificationEmail: string;
   }>({
     title: "",
     description: "",
@@ -326,6 +334,7 @@ export function Routines() {
     remediationEnabled: false,
     remediationPrompt: "",
     remediationAssigneeAgentId: "",
+    notificationEmail: "",
   });
   const routineViewStateKey = selectedCompanyId
     ? `paperclip:routines-view:${selectedCompanyId}`
@@ -391,6 +400,7 @@ export function Routines() {
         remediationEnabled: false,
         remediationPrompt: "",
         remediationAssigneeAgentId: "",
+        notificationEmail: "",
       });
       setComposerOpen(false);
       setAdvancedOpen(false);
@@ -407,6 +417,18 @@ export function Routines() {
       navigate(`/routines/${routine.id}?tab=triggers`);
     },
   });
+  const cloneRoutine = useMutation({
+    mutationFn: (id: string) => routinesApi.clone(id),
+    onSuccess: async (cloned) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) });
+      pushToast({ title: "Routine duplicated", body: `"${cloned.title}" created as paused.`, tone: "success" });
+      navigate(`/routines/${cloned.id}`);
+    },
+    onError: () => {
+      pushToast({ title: "Duplicate failed", body: "Could not duplicate the routine.", tone: "error" });
+    },
+  });
+
   const updateIssue = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       issuesApi.update(id, data),
@@ -938,6 +960,18 @@ export function Routines() {
                       </Select>
                       <p className="text-xs text-muted-foreground">{catchUpPolicyDescriptions[draft.catchUpPolicy]}</p>
                     </div>
+                    {draft.executionMode !== "agent" && (
+                      <div className="space-y-1.5 md:col-span-2">
+                        <Label className="text-xs">Failure notification email</Label>
+                        <Input
+                          type="email"
+                          placeholder="you@example.com"
+                          value={draft.notificationEmail}
+                          onChange={(e) => setDraft((current) => ({ ...current, notificationEmail: e.target.value }))}
+                        />
+                        <p className="text-xs text-muted-foreground">Receives an email when this routine fails.</p>
+                      </div>
+                    )}
                   </div>
                 </CollapsibleContent>
               </Collapsible>
@@ -1025,6 +1059,7 @@ export function Routines() {
                         runningRoutineId={runningRoutineId}
                         href={`/routines/${routine.id}`}
                         onRunNow={handleRunNow}
+                        onClone={(r) => cloneRoutine.mutate(r.id)}
                       />
                     ))}
                   </CollapsibleContent>

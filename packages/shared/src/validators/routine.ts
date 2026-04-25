@@ -67,6 +67,7 @@ export const createRoutineSchema = z.object({
   remediationEnabled: z.boolean().optional().default(false),
   remediationPrompt: z.string().max(10_000).optional().nullable(),
   remediationAssigneeAgentId: z.string().uuid().optional().nullable(),
+  notificationEmail: z.string().email().optional().nullable(),
 });
 
 export type CreateRoutine = z.infer<typeof createRoutineSchema>;

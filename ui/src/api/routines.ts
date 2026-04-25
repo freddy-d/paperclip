@@ -38,6 +38,7 @@ export const routinesApi = {
     api.post<RotateRoutineTriggerResponse>(`/routine-triggers/${id}/rotate-secret`, {}),
   run: (id: string, data?: Record<string, unknown>) =>
     api.post<RoutineRun>(`/routines/${id}/run`, data ?? {}),
+  clone: (id: string) => api.post<Routine>(`/routines/${id}/clone`, {}),
   activity: async (
     companyId: string,
     routineId: string,
