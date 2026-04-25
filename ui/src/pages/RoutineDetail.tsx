@@ -604,7 +604,7 @@ export function RoutineDetail() {
       JSON.stringify(editDraft.variables) !== JSON.stringify(routineDefaults.variables) ||
       editDraft.executionMode !== routineDefaults.executionMode ||
       editDraft.scriptPath !== routineDefaults.scriptPath ||
-      editDraft.scriptCommandArgs !== routineDefaults.scriptCommandArgs ||
+      JSON.stringify(editDraft.scriptCommandArgs) !== JSON.stringify(routineDefaults.scriptCommandArgs) ||
       editDraft.scriptTimeoutSec !== routineDefaults.scriptTimeoutSec ||
       editDraft.remediationEnabled !== routineDefaults.remediationEnabled ||
       editDraft.remediationPrompt !== routineDefaults.remediationPrompt ||

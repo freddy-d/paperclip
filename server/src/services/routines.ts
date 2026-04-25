@@ -49,7 +49,7 @@ import { logActivity } from "./activity-log.js";
 import { runChildProcess } from "../adapters/utils.js";
 
 const OPEN_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked"];
-const LIVE_HEARTBEAT_RUN_STATUSES = ["queued", "running"];
+const LIVE_HEARTBEAT_RUN_STATUSES = ["queued", "running", "scheduled_retry"];
 const TERMINAL_ISSUE_STATUSES = new Set(["done", "cancelled"]);
 const MAX_CATCH_UP_RUNS = 25;
 const WEEKDAY_INDEX: Record<string, number> = {
@@ -167,14 +167,14 @@ interface RandomCronConfig {
 }
 
 function localMidnightUtcForOffset(now: Date, tz: string, offsetDays: number): Date {
-  const rough = new Date(now.getTime() + offsetDays * 86_400_000);
-  const parts = getZonedMinuteParts(rough, tz);
-  const minuteOfDay = parts.hour * 60 + parts.minute;
-  const candidate = new Date(rough.getTime() - minuteOfDay * 60_000);
-  candidate.setUTCSeconds(0, 0);
-  const check = getZonedMinuteParts(candidate, tz);
-  if (check.hour !== 0 || check.minute !== 0) {
-    return new Date(candidate.getTime() - (check.hour * 60 + check.minute) * 60_000);
+  let candidate = new Date(now.getTime() + offsetDays * 86_400_000);
+  // Iterate to convergence: handles DST transitions and sub-hour timezone offsets.
+  // Three passes are sufficient for any real-world timezone.
+  for (let i = 0; i < 3; i++) {
+    const parts = getZonedMinuteParts(candidate, tz);
+    const msIntoDay = (parts.hour * 60 + parts.minute) * 60_000 + candidate.getUTCSeconds() * 1000 + candidate.getUTCMilliseconds();
+    if (msIntoDay === 0) break;
+    candidate = new Date(candidate.getTime() - msIntoDay);
   }
   return candidate;
 }
@@ -349,7 +349,7 @@ function assertRoutineCanEnable(status: string, assigneeAgentId: string | null |
 }
 
 function collectProvidedRoutineVariables(
-  source: "schedule" | "manual" | "api" | "webhook",
+  source: "schedule" | "manual" | "api" | "webhook" | "random_interval",
   payload: Record<string, unknown> | null | undefined,
   variables: Record<string, unknown> | null | undefined,
 ) {
@@ -366,7 +366,7 @@ function collectProvidedRoutineVariables(
 function resolveRoutineVariableValues(
   variables: RoutineVariable[],
   input: {
-    source: "schedule" | "manual" | "api" | "webhook";
+    source: "schedule" | "manual" | "api" | "webhook" | "random_interval";
     payload?: Record<string, unknown> | null;
     variables?: Record<string, unknown> | null;
     automaticVariables?: Record<string, string | number | boolean>;
@@ -873,7 +873,7 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
   async function dispatchRoutineRun(input: {
     routine: typeof routines.$inferSelect;
     trigger: typeof routineTriggers.$inferSelect | null;
-    source: "schedule" | "manual" | "api" | "webhook";
+    source: "schedule" | "manual" | "api" | "webhook" | "random_interval";
     payload?: Record<string, unknown> | null;
     variables?: Record<string, unknown> | null;
     projectId?: string | null;
@@ -1746,7 +1746,7 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
           if (patch.maxIntervalSec == null) throw unprocessable("Random interval triggers require maxIntervalSec");
           maxIntervalSec = patch.maxIntervalSec;
         }
-        if (minIntervalSec && maxIntervalSec && maxIntervalSec < minIntervalSec) {
+        if (minIntervalSec !== null && maxIntervalSec !== null && maxIntervalSec < minIntervalSec) {
           throw unprocessable("maxIntervalSec must be greater than or equal to minIntervalSec");
         }
         if ((patch.enabled ?? existing.enabled) === true && minIntervalSec && maxIntervalSec) {
@@ -2177,7 +2177,7 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
         await dispatchRoutineRun({
           routine: row.routine,
           trigger: row.trigger,
-          source: "manual" as const,
+          source: "random_interval" as const,
         });
         triggered += 1;
       }
@@ -2300,7 +2300,8 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
           if (output.length > 10 * 1024) output = output.slice(0, 10 * 1024);
         },
       });
-      if (!output && result.stdout) output = result.stdout.slice(0, 10 * 1024);
+      // Prefer longer output between onLog accumulation and buffered result fields
+      if ((result.stdout?.length ?? 0) > output.length) output = result.stdout!.slice(0, 10 * 1024);
       if (!output && result.stderr) output = result.stderr.slice(0, 10 * 1024);
       if (result.timedOut) {
         return { args: [], error: "Script --help timed out after 5s" };

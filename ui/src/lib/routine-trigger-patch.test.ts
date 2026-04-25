@@ -132,7 +132,7 @@ describe("buildRoutineTriggerPatch", () => {
     });
   });
 
-  it("uses direct seconds when days/hours are not provided", () => {
+  it("defaults to 1h/24h when no days/hours are provided", () => {
     const patch = buildRoutineTriggerPatch(
       makeScheduleTrigger({ kind: "random_interval" }),
       {
@@ -140,16 +140,14 @@ describe("buildRoutineTriggerPatch", () => {
         cronExpression: "",
         signingMode: "bearer",
         replayWindowSec: "300",
-        minIntervalSec: "1800",
-        maxIntervalSec: "43200",
       },
       "UTC",
     );
 
     expect(patch).toEqual({
       label: "Random interval",
-      minIntervalSec: 1800,
-      maxIntervalSec: 43200,
+      minIntervalSec: 3600,
+      maxIntervalSec: 86400,
     });
   });
 

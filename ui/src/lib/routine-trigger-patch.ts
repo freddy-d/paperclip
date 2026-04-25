@@ -53,18 +53,8 @@ export function buildRoutineTriggerPatch(
   }
 
   if (trigger.kind === "random_interval") {
-    const hasDaysHours =
-      draft.minDays !== undefined ||
-      draft.minHours !== undefined ||
-      draft.maxDays !== undefined ||
-      draft.maxHours !== undefined;
-    if (hasDaysHours) {
-      patch.minIntervalSec = toSeconds(draft.minDays || "0", draft.minHours || "0") || 3600;
-      patch.maxIntervalSec = toSeconds(draft.maxDays || "0", draft.maxHours || "0") || 86400;
-    } else {
-      patch.minIntervalSec = Number(draft.minIntervalSec || "3600");
-      patch.maxIntervalSec = Number(draft.maxIntervalSec || "86400");
-    }
+    patch.minIntervalSec = toSeconds(draft.minDays || "0", draft.minHours || "0") || 3600;
+    patch.maxIntervalSec = toSeconds(draft.maxDays || "0", draft.maxHours || "0") || 86400;
   }
 
   if (trigger.kind === "random_cron_scheduler") {
